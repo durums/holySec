@@ -1,4 +1,4 @@
-import React, { useState, useReducer, useCallback, useEffect, useRef } from 'react'
+import React, { useState, useReducer, useCallback, useEffect, useRef, useMemo } from 'react'
 import { jsPDF } from 'jspdf'
 import {
   LayoutDashboard, Users, ShieldAlert, Calendar, FileText,
@@ -1064,7 +1064,7 @@ function ClientModal({ client, onSave, onClose }) {
   const setK = (k, v) => setForm(f => ({ ...f, contract: { ...f.contract, [k]: v } }))
 
   return (
-    <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-6" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/75 z-50 flex items-center justify-center p-6" onClick={onClose}>
       <div className="bg-[#0f172a] border border-[#1e293b] rounded-2xl w-full max-w-lg shadow-2xl overflow-y-auto max-h-[90vh]" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-[#1e293b]">
           <h2 className="text-sm font-mono font-bold text-slate-100 tracking-wider">
@@ -1271,7 +1271,7 @@ function ClientList({ clients: allClients = CLIENTS, onClientClick, currentUser,
       </Panel>
 
       {confirmDelete && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-6">
+        <div className="fixed inset-0 bg-black/75 z-50 flex items-center justify-center p-6">
           <div className="bg-[#0f172a] border border-red-500/30 rounded-xl w-full max-w-sm p-6 shadow-2xl">
             <div className="flex items-center gap-3 mb-4">
               <div className="p-2 rounded-lg bg-red-500/10"><Trash2 size={16} className="text-red-400" /></div>
@@ -1599,7 +1599,7 @@ function NewFindingModal({ clients = CLIENTS, currentUser, onSave, onClose, edit
   const sevColors = { CRITICAL: 'border-red-500/60 bg-red-500/10 text-red-400', HIGH: 'border-orange-500/60 bg-orange-500/10 text-orange-400', MEDIUM: 'border-yellow-500/60 bg-yellow-500/10 text-yellow-400', LOW: 'border-green-500/60 bg-green-500/10 text-green-400' }
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
       <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl p-6 w-full max-w-lg space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-mono font-semibold text-slate-100 flex items-center gap-2">
@@ -1952,7 +1952,7 @@ function NewEngagementModal({ clients = CLIENTS, currentUser, onSave, onClose })
   }
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
       <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl p-6 w-full max-w-md space-y-4 shadow-2xl">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-mono font-semibold text-slate-100 flex items-center gap-2">
@@ -2351,7 +2351,7 @@ function NewReportModal({ onAdd, onClose }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-6" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/75 z-50 flex items-center justify-center p-6" onClick={onClose}>
       <div className="bg-[#0f172a] border border-[#1e293b] rounded-2xl w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-6 py-5 border-b border-[#1e293b]">
           <div className="flex items-center gap-3">
@@ -2443,7 +2443,7 @@ const REPORT_TYPE_ICONS = {
 
 function ReportModal({ report, client, onClose }) {
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-6" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-6" onClick={onClose}>
       <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl w-full max-w-2xl max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-[#1e293b]">
           <div>
@@ -2884,7 +2884,7 @@ function UserManagementSection({ members, currentUser, onAdd, onRemove, onEdit }
       {editMember && <AddEditMemberModal member={editMember} onEdit={onEdit} onClose={() => setEditMember(null)} />}
 
       {deleteConfirm && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-6" onClick={() => setDeleteConfirm(null)}>
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-6" onClick={() => setDeleteConfirm(null)}>
           <div className="bg-[#0f172a] border border-red-500/20 rounded-2xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-3 mb-4">
               <div className="p-2 bg-red-500/10 border border-red-500/20 rounded-lg"><Trash2 size={14} className="text-red-400" /></div>
@@ -3249,7 +3249,7 @@ function AddEditMemberModal({ member = null, onAdd, onEdit, onClose }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-6" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-6" onClick={onClose}>
       <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-[#1e293b]">
           <h2 className="text-sm font-mono font-bold text-slate-100">{isEdit ? 'Mitarbeiter bearbeiten' : 'Mitarbeiter hinzufügen'}</h2>
@@ -3333,7 +3333,7 @@ function AssignTeamModal({ engagement, teamMembers, assigned, onSave, onClose })
   })
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-6" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-6" onClick={onClose}>
       <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-[#1e293b]">
           <div>
@@ -3562,7 +3562,7 @@ function MemberTimeDetailModal({ member, timeEntries, onClose, onExport }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-6" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/75 z-50 flex items-center justify-center p-6" onClick={onClose}>
       <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl w-full max-w-2xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[#1e293b]">
@@ -3640,7 +3640,7 @@ function GroupModal({ group, teamMembers, engagements = ENGAGEMENTS, onSave, onC
   const toggle = (id) => setMemberIds(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id])
 
   return (
-    <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-6" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/75 z-50 flex items-center justify-center p-6" onClick={onClose}>
       <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl w-full max-w-md p-6 shadow-2xl space-y-4" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-mono font-bold text-slate-100">{group ? 'Gruppe bearbeiten' : 'Neue Gruppe'}</h3>
@@ -4246,12 +4246,13 @@ export default function App() {
   const handleClientClick = useCallback((id) => { setSelectedClientId(id); setPage('client-detail') }, [])
   const handleBackToClients = useCallback(() => { setSelectedClientId(null); setPage('client-manager') }, [])
 
-  const allEngagements = [...ENGAGEMENTS, ...customEngagements]
-  const allFindings = [...FINDINGS, ...customFindings]
+  const allEngagements = useMemo(() => [...ENGAGEMENTS, ...customEngagements], [customEngagements])
+  const allFindings = useMemo(() => [...FINDINGS, ...customFindings]
     .filter(f => !deletedFindingIds.has(f.id))
-    .map(f => findingEdits[f.id] ? findingEdits[f.id] : f)
+    .map(f => findingEdits[f.id] ? findingEdits[f.id] : f),
+    [customFindings, deletedFindingIds, findingEdits])
 
-  const allUsersAuth = [...USERS_AUTH, ...customUsersAuth]
+  const allUsersAuth = useMemo(() => [...USERS_AUTH, ...customUsersAuth], [customUsersAuth])
 
   if (!currentUser) return <LoginPage onLogin={handleLogin} darkMode={darkMode} onToggleDark={() => setDarkMode(v => !v)} usersAuth={allUsersAuth} />
 
