@@ -1,0 +1,4295 @@
+import React, { useState, useReducer, useCallback, useEffect, useRef } from 'react'
+import { jsPDF } from 'jspdf'
+import {
+  LayoutDashboard, Users, ShieldAlert, Calendar, FileText,
+  Settings, ChevronLeft, ChevronRight, X, Filter, Download,
+  AlertTriangle, CheckCircle2, Clock, Pause, TrendingUp,
+  Building2, Activity, Target, Globe, Network, UserCheck,
+  Sword, Shield, Eye, Star, Zap, Lock, Info, ChevronDown,
+  ChevronUp, ExternalLink, Plus, Search, Bell, Menu, Crown,
+  Users2, UserPlus, LogOut, Trash2, KeyRound, Edit3, StopCircle, PlayCircle, Timer, ClipboardList, Layers, Moon, Sun
+} from 'lucide-react'
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell, LineChart, Line, Legend
+} from 'recharts'
+import {
+  CLIENTS, FINDINGS, ENGAGEMENTS, REPORTS,
+  MONTHLY_ENGAGEMENTS, CVSS_DISTRIBUTION, SEVERITY_DIST,
+  TEAM_MEMBERS as INITIAL_TEAM, USERS_AUTH
+} from './data.js'
+
+// ─── CONSTANTS ───────────────────────────────────────────────────────────────
+
+const NAV_ITEMS = [
+  { id: 'dashboard',      label: 'Dashboard',      icon: LayoutDashboard },
+  { id: 'client-radar',   label: 'Client Radar',   icon: Activity },
+  { id: 'client-manager', label: 'Client Manager', icon: Building2 },
+  { id: 'findings',       label: 'Findings',       icon: ShieldAlert },
+  { id: 'engagements',    label: 'Engagements',    icon: Calendar },
+  { id: 'eng-groups',     label: 'Eng. Groups',    icon: Layers, roles: ['Admin', 'Senior Pentester'] },
+  { id: 'reports',        label: 'Reports',        icon: FileText },
+  { id: 'team',           label: 'Team',           icon: Users2 },
+  { id: 'audit',          label: 'Audit Log',      icon: ClipboardList, roles: ['Admin'] },
+  { id: 'about',          label: 'About HolySec',  icon: Crown },
+  { id: 'settings',       label: 'Settings',       icon: Settings },
+]
+
+const GROUP_COLORS = {
+  cyan:   { dot: 'bg-cyan-400',   ring: 'ring-cyan-400',   text: 'text-cyan-400',   hex: '#22d3ee' },
+  orange: { dot: 'bg-orange-400', ring: 'ring-orange-400', text: 'text-orange-400', hex: '#fb923c' },
+  purple: { dot: 'bg-purple-400', ring: 'ring-purple-400', text: 'text-purple-400', hex: '#c084fc' },
+  green:  { dot: 'bg-green-400',  ring: 'ring-green-400',  text: 'text-green-400',  hex: '#4ade80' },
+  blue:   { dot: 'bg-blue-400',   ring: 'ring-blue-400',   text: 'text-blue-400',   hex: '#60a5fa' },
+  pink:   { dot: 'bg-pink-400',   ring: 'ring-pink-400',   text: 'text-pink-400',   hex: '#f472b6' },
+  red:    { dot: 'bg-red-400',    ring: 'ring-red-400',    text: 'text-red-400',    hex: '#f87171' },
+}
+
+const STATUS_CONFIG = {
+  Active:     { color: 'text-cyan-400', bg: 'bg-cyan-400/10 border-cyan-400/30', dot: 'bg-cyan-400', pulse: true },
+  Pending:    { color: 'text-yellow-400', bg: 'bg-yellow-400/10 border-yellow-400/30', dot: 'bg-yellow-400', pulse: false },
+  Completed:  { color: 'text-green-400', bg: 'bg-green-400/10 border-green-400/30', dot: 'bg-green-400', pulse: false },
+  'On Hold':  { color: 'text-slate-400', bg: 'bg-slate-400/10 border-slate-400/30', dot: 'bg-slate-400', pulse: false },
+  Planned:    { color: 'text-blue-400', bg: 'bg-blue-400/10 border-blue-400/30', dot: 'bg-blue-400', pulse: true },
+  Draft:      { color: 'text-yellow-400', bg: 'bg-yellow-400/10 border-yellow-400/30', dot: 'bg-yellow-400', pulse: false },
+  Delivered:  { color: 'text-green-400', bg: 'bg-green-400/10 border-green-400/30', dot: 'bg-green-400', pulse: false },
+  Final:      { color: 'text-cyan-400', bg: 'bg-cyan-400/10 border-cyan-400/30', dot: 'bg-cyan-400', pulse: false },
+  Open:            { color: 'text-red-400', bg: 'bg-red-400/10 border-red-400/30', dot: 'bg-red-400', pulse: true },
+  'In Remediation':{ color: 'text-yellow-400', bg: 'bg-yellow-400/10 border-yellow-400/30', dot: 'bg-yellow-400', pulse: false },
+  Closed:          { color: 'text-green-400', bg: 'bg-green-400/10 border-green-400/30', dot: 'bg-green-400', pulse: false },
+}
+
+const SEVERITY_COLORS = {
+  CRITICAL: { text: 'text-red-400', bg: 'bg-red-500/15 border-red-500/30', bar: 'bg-red-500' },
+  HIGH:     { text: 'text-orange-400', bg: 'bg-orange-500/15 border-orange-500/30', bar: 'bg-orange-500' },
+  MEDIUM:   { text: 'text-yellow-400', bg: 'bg-yellow-500/15 border-yellow-500/30', bar: 'bg-yellow-500' },
+  LOW:      { text: 'text-green-400', bg: 'bg-green-500/15 border-green-500/30', bar: 'bg-green-500' },
+}
+
+const SCOPE_ICONS = {
+  'Web': Globe,
+  'Network': Network,
+  'Social Engineering': UserCheck,
+  'Full Red Team': Sword,
+}
+
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
+
+function formatDuration(secs) {
+  const h = Math.floor(secs / 3600)
+  const m = Math.floor((secs % 3600) / 60)
+  const s = secs % 60
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
+}
+
+function formatDurationShort(secs) {
+  const h = Math.floor(secs / 3600)
+  const m = Math.floor((secs % 3600) / 60)
+  return h > 0 ? `${h}h ${m}m` : `${m}m`
+}
+
+function daysUntil(dateStr) {
+  const diff = Math.ceil((new Date(dateStr) - new Date()) / 86400000)
+  return diff
+}
+
+function getMyScope(currentUser, assignments, allClients = CLIENTS, allEngagements = ENGAGEMENTS, allFindings = FINDINGS) {
+  if (!currentUser || currentUser.role === 'Admin' || currentUser.role === 'Junior Pentester') {
+    return { clients: allClients, findings: allFindings, engagements: allEngagements }
+  }
+  const engagements = allEngagements.filter(e => (assignments[e.id] || []).includes(currentUser.id))
+  const clientIds = new Set(engagements.map(e => e.clientId))
+  return {
+    clients:  allClients.filter(c => clientIds.has(c.id)),
+    findings: allFindings.filter(f => clientIds.has(f.clientId)),
+    engagements,
+  }
+}
+
+function StatusBadge({ status, size = 'sm' }) {
+  const cfg = STATUS_CONFIG[status] || STATUS_CONFIG['Pending']
+  const pad = size === 'sm' ? 'px-2 py-0.5 text-xs' : 'px-3 py-1 text-sm'
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded border font-mono font-medium ${pad} ${cfg.bg} ${cfg.color}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot} ${cfg.pulse ? 'animate-pulse' : ''}`} />
+      {status}
+    </span>
+  )
+}
+
+function SeverityBadge({ severity }) {
+  const cfg = SEVERITY_COLORS[severity] || SEVERITY_COLORS.LOW
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded border text-xs font-mono font-bold ${cfg.bg} ${cfg.text}`}>
+      {severity}
+    </span>
+  )
+}
+
+function CvssBar({ score }) {
+  const pct = (score / 10) * 100
+  const color = score >= 9 ? 'bg-red-500' : score >= 7 ? 'bg-orange-500' : score >= 4 ? 'bg-yellow-500' : 'bg-green-500'
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex-1 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+        <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${pct}%` }} />
+      </div>
+      <span className={`text-xs font-mono font-bold w-8 text-right ${score >= 9 ? 'text-red-400' : score >= 7 ? 'text-orange-400' : score >= 4 ? 'text-yellow-400' : 'text-green-400'}`}>
+        {score.toFixed(1)}
+      </span>
+    </div>
+  )
+}
+
+function InfoTooltip({ text }) {
+  const [show, setShow] = useState(false)
+  return (
+    <div className="relative inline-flex items-center" onMouseEnter={() => setShow(true)} onMouseLeave={() => setShow(false)}>
+      <Info size={11} className="text-slate-500 hover:text-slate-300 cursor-help transition-colors" />
+      {show && (
+        <div className="absolute top-full left-0 mt-2 w-56 bg-[#1e293b] border border-[#334155] rounded-lg px-3 py-2 text-[10px] font-mono text-slate-400 leading-relaxed z-[100] shadow-2xl pointer-events-none whitespace-normal">
+          {text}
+        </div>
+      )}
+    </div>
+  )
+}
+
+const MEMBER_COLOR_MAP = {
+  cyan:   { bg: 'bg-cyan-500',   text: 'text-cyan-400',   ring: 'ring-cyan-500/30' },
+  orange: { bg: 'bg-orange-500', text: 'text-orange-400', ring: 'ring-orange-500/30' },
+  purple: { bg: 'bg-purple-500', text: 'text-purple-400', ring: 'ring-purple-500/30' },
+  green:  { bg: 'bg-green-500',  text: 'text-green-400',  ring: 'ring-green-500/30' },
+  blue:   { bg: 'bg-blue-500',   text: 'text-blue-400',   ring: 'ring-blue-500/30' },
+  pink:   { bg: 'bg-pink-500',   text: 'text-pink-400',   ring: 'ring-pink-500/30' },
+  red:    { bg: 'bg-red-500',    text: 'text-red-400',    ring: 'ring-red-500/30' },
+}
+const MEMBER_COLORS_LIST = ['cyan', 'orange', 'purple', 'green', 'blue', 'pink', 'red']
+
+// ─── PDF GENERATOR ────────────────────────────────────────────────────────────
+
+function generateReportPDF(report, client) {
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+  const W = 210, H = 297
+
+  // Background
+  doc.setFillColor(10, 10, 10)
+  doc.rect(0, 0, W, H, 'F')
+
+  // Header band
+  doc.setFillColor(15, 23, 42)
+  doc.rect(0, 0, W, 48, 'F')
+  doc.setFillColor(6, 182, 212)
+  doc.rect(0, 0, 4, 48, 'F')
+
+  // HOLYSEC wordmark
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(22)
+  doc.setTextColor(255, 255, 255)
+  doc.text('HOLY', 14, 22)
+  doc.setTextColor(6, 182, 212)
+  doc.text('SEC', 38, 22)
+
+  // Tagline
+  doc.setFont('helvetica', 'italic')
+  doc.setFontSize(7)
+  doc.setTextColor(100, 116, 139)
+  doc.text('Blessed by Offense, Built for Defense.', 14, 28)
+
+  // CONFIDENTIAL pill
+  doc.setFillColor(220, 38, 38)
+  doc.rect(W - 52, 8, 40, 11, 'F')
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(7)
+  doc.setTextColor(255, 255, 255)
+  doc.text('CONFIDENTIAL', W - 32, 14.8, { align: 'center' })
+
+  // Report title
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(13)
+  doc.setTextColor(226, 232, 240)
+  const titleLines = doc.splitTextToSize(report.title, W - 28)
+  doc.text(titleLines, 14, 39)
+
+  // Separator
+  doc.setDrawColor(30, 41, 59)
+  doc.setLineWidth(0.3)
+  doc.line(0, 48, W, 48)
+
+  // Metadata block
+  let y = 60
+  const meta = [
+    ['Classification', 'CONFIDENTIAL', true],
+    ['Client',         client?.name || '—', false],
+    ['Author',         'Leif Balthasar  //  HolySec', false],
+    ['Date',           report.date, false],
+    ['Type',           report.type, false],
+    ['Status',         report.status, false],
+  ]
+  doc.setFontSize(8)
+  meta.forEach(([label, value, red]) => {
+    doc.setFont('helvetica', 'normal')
+    doc.setTextColor(100, 116, 139)
+    doc.text(label + ':', 14, y)
+    doc.setFont('helvetica', red ? 'bold' : 'normal')
+    doc.setTextColor(red ? 220 : 226, red ? 38 : 232, red ? 38 : 240)
+    doc.text(value, 62, y)
+    y += 7
+  })
+
+  // Section helper
+  const sectionHeader = (title, yPos) => {
+    doc.setFillColor(15, 23, 42)
+    doc.rect(14, yPos, W - 28, 8, 'F')
+    doc.setFillColor(6, 182, 212)
+    doc.rect(14, yPos, 3, 8, 'F')
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(8)
+    doc.setTextColor(226, 232, 240)
+    doc.text(title, 20, yPos + 5.2)
+    return yPos + 13
+  }
+
+  // Methodology
+  y += 4
+  y = sectionHeader('SCOPE & METHODOLOGY', y)
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(7.5)
+  doc.setTextColor(148, 163, 184)
+  const meth = 'Assessment conducted per PTES and OWASP Testing Guide v4.2. Phases: Reconnaissance, Scanning & Enumeration, Exploitation, Post-Exploitation, Reporting. All activities performed within agreed scope and timeframe.'
+  const methLines = doc.splitTextToSize(meth, W - 28)
+  doc.text(methLines, 14, y)
+  y += methLines.length * 4.8 + 8
+
+  // Scope block
+  if (client?.scope) {
+    y = sectionHeader('TARGET SCOPE', y)
+    doc.setFont('courier', 'normal')
+    doc.setFontSize(7)
+    doc.setTextColor(6, 182, 212)
+    const allTargets = [
+      ...(client.scope.ipRanges || []),
+      ...(client.scope.domains || []).slice(0, 6),
+    ]
+    allTargets.forEach(t => {
+      if (y > 250) return
+      doc.text('  ' + t, 14, y)
+      y += 4.5
+    })
+    if (client.scope.exclusions?.length) {
+      doc.setTextColor(234, 179, 8)
+      client.scope.exclusions.forEach(ex => {
+        if (y > 255) return
+        doc.text('  [EXCLUDE]  ' + ex, 14, y)
+        y += 4.5
+      })
+    }
+    y += 6
+  }
+
+  // Findings table
+  const clientFindings = FINDINGS.filter(f => f.clientId === client?.id)
+  if (clientFindings.length > 0 && y < 240) {
+    y = sectionHeader('FINDINGS SUMMARY', y)
+
+    // Table header row
+    doc.setFillColor(20, 30, 48)
+    doc.rect(14, y, W - 28, 7, 'F')
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(6.5)
+    doc.setTextColor(100, 116, 139)
+    doc.text('SEV', 16, y + 4.5)
+    doc.text('FINDING', 38, y + 4.5)
+    doc.text('CVSS', 148, y + 4.5)
+    doc.text('STATUS', 165, y + 4.5)
+    y += 8
+
+    const sevColor = { CRITICAL: [220, 38, 38], HIGH: [249, 115, 22], MEDIUM: [234, 179, 8], LOW: [34, 197, 94] }
+    clientFindings.slice(0, 10).forEach((f, i) => {
+      if (y > 268) return
+      const [r, g, b] = sevColor[f.severity] || [148, 163, 184]
+      if (i % 2 === 0) { doc.setFillColor(15, 23, 42); doc.rect(14, y - 1, W - 28, 7, 'F') }
+
+      doc.setFillColor(r, g, b)
+      doc.rect(14, y + 0.5, 20, 5, 'F')
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(5.5)
+      doc.setTextColor(0, 0, 0)
+      doc.text(f.severity, 24, y + 3.8, { align: 'center' })
+
+      doc.setFont('helvetica', 'normal')
+      doc.setFontSize(7)
+      doc.setTextColor(226, 232, 240)
+      const title = f.title.length > 48 ? f.title.slice(0, 48) + '…' : f.title
+      doc.text(title, 38, y + 4)
+
+      doc.setTextColor(r, g, b)
+      doc.setFont('helvetica', 'bold')
+      doc.text(f.cvss.toFixed(1), 152, y + 4)
+
+      doc.setTextColor(100, 116, 139)
+      doc.setFont('helvetica', 'normal')
+      doc.text(f.status, 165, y + 4)
+      y += 7
+    })
+  }
+
+  // Footer
+  doc.setDrawColor(30, 41, 59)
+  doc.setLineWidth(0.3)
+  doc.line(14, H - 16, W - 14, H - 16)
+  doc.setFont('helvetica', 'italic')
+  doc.setFontSize(6)
+  doc.setTextColor(71, 85, 105)
+  doc.text(`CONFIDENTIAL — solely for ${client?.name || 'authorized recipients'}. Unauthorized disclosure prohibited.`, 14, H - 11)
+  doc.text('HolySec  ·  leif@holysec.de', W - 14, H - 11, { align: 'right' })
+
+  const safeName = (client?.name || 'Client').replace(/\s+/g, '_')
+  const safeType = report.type.replace(/\s+/g, '_')
+  doc.save(`HolySec_${safeType}_${safeName}_${report.date}.pdf`)
+}
+
+function MemberAvatar({ member, size = 'sm' }) {
+  const colorKey = member.color || MEMBER_COLORS_LIST[parseInt(member.id?.replace(/\D/g, '') || '0') % MEMBER_COLORS_LIST.length]
+  const cfg = MEMBER_COLOR_MAP[colorKey] || MEMBER_COLOR_MAP.cyan
+  const sz = size === 'sm' ? 'w-6 h-6 text-[9px]' : size === 'md' ? 'w-8 h-8 text-xs' : 'w-10 h-10 text-sm'
+  return (
+    <div className={`${sz} rounded-full ${cfg.bg} flex items-center justify-center font-mono font-black text-black shrink-0 select-none`} title={member.name}>
+      {member.initials}
+    </div>
+  )
+}
+
+function Panel({ children, className = '', onClick }) {
+  return (
+    <div className={`bg-[#0f172a] border border-[#1e293b] rounded-lg ${className} ${onClick ? 'cursor-pointer' : ''}`} onClick={onClick}>
+      {children}
+    </div>
+  )
+}
+
+function PanelHeader({ title, subtitle, children, info }) {
+  return (
+    <div className="flex items-center justify-between px-5 py-4 border-b border-[#1e293b]">
+      <div>
+        <div className="flex items-center gap-2">
+          <h2 className="text-sm font-mono font-semibold text-slate-100 tracking-wider uppercase">{title}</h2>
+          {info && <InfoTooltip text={info} />}
+        </div>
+        {subtitle && <p className="text-xs text-slate-500 mt-0.5">{subtitle}</p>}
+      </div>
+      {children && <div className="flex items-center gap-2">{children}</div>}
+    </div>
+  )
+}
+
+function KpiCard({ label, value, sub, icon: Icon, accent = false, danger = false, info, onClick, active }) {
+  const isHighlighted = accent || active
+  const isDanger = danger && value > 0
+  return (
+    <Panel
+      className={`p-5 transition-all duration-200 ${isDanger ? 'border-red-500/50 bg-red-500/8 hover:border-red-500/70' : 'hover:border-cyan-500/40 ' + (isHighlighted ? 'border-cyan-500/40 bg-cyan-500/5' : '')}`}
+      onClick={onClick}
+    >
+      <div className="flex items-start justify-between mb-3">
+        <div className="flex items-center gap-1.5">
+          <span className={`text-xs font-mono uppercase tracking-widest ${isDanger ? 'text-red-400' : 'text-slate-500'}`}>{label}</span>
+          {info && <InfoTooltip text={info} />}
+        </div>
+        <div className={`p-1.5 rounded ${isDanger ? 'bg-red-500/20' : isHighlighted ? 'bg-cyan-500/20' : 'bg-slate-800'}`}>
+          <Icon size={14} className={`${isDanger ? 'text-red-400 animate-pulse' : isHighlighted ? 'text-cyan-400' : 'text-slate-400'}`} />
+        </div>
+      </div>
+      <div className={`text-3xl font-mono font-bold mb-1 ${isDanger ? 'text-red-400' : isHighlighted ? 'text-cyan-400 text-glow' : 'text-slate-100'}`}>{value}</div>
+      {sub && <div className={`text-xs font-mono ${isDanger ? 'text-red-400/60' : 'text-slate-500'}`}>{sub}</div>}
+    </Panel>
+  )
+}
+
+// ─── LOGIN ────────────────────────────────────────────────────────────────────
+
+function NetworkCanvas() {
+  const canvasRef = useRef(null)
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    let animId
+    const LABELS = ['10.0.0.1', '192.168.1.1', '172.16.0.1', 'CVE-2024', 'SSH:22', 'RDP:3389', 'SMB:445', '443/tcp', '8080', '0x4f5c']
+    const resize = () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight }
+    window.addEventListener('resize', resize)
+    resize()
+    const count = Math.min(65, Math.floor(canvas.width * canvas.height / 12000))
+    const nodes = Array.from({ length: count }, (_, i) => ({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height,
+      vx: (Math.random() - 0.5) * 0.32,
+      vy: (Math.random() - 0.5) * 0.32,
+      r: i < 10 ? 2.2 : 1.3,
+      label: i < 10 ? LABELS[i] : null,
+      t: Math.random() * Math.PI * 2,
+    }))
+    const pulses = []
+    let frame = 0
+    const MAX = 145
+    const draw = () => {
+      const w = canvas.width, h = canvas.height
+      ctx.clearRect(0, 0, w, h)
+      frame++
+      nodes.forEach(n => {
+        n.x += n.vx; n.y += n.vy; n.t += 0.014
+        if (n.x < 0) { n.x = 0; n.vx = Math.abs(n.vx) } else if (n.x > w) { n.x = w; n.vx = -Math.abs(n.vx) }
+        if (n.y < 0) { n.y = 0; n.vy = Math.abs(n.vy) } else if (n.y > h) { n.y = h; n.vy = -Math.abs(n.vy) }
+      })
+      // Spawn data pulse every 55 frames
+      if (frame % 55 === 0 && pulses.length < 10) {
+        for (let a = 0; a < 30; a++) {
+          const i = Math.floor(Math.random() * nodes.length)
+          const j = Math.floor(Math.random() * nodes.length)
+          if (i === j) continue
+          const dx = nodes[i].x - nodes[j].x, dy = nodes[i].y - nodes[j].y
+          if (dx*dx + dy*dy < MAX*MAX) { pulses.push({ from: i, to: j, t: 0 }); break }
+        }
+      }
+      // Connections
+      for (let i = 0; i < nodes.length; i++) {
+        for (let j = i + 1; j < nodes.length; j++) {
+          const dx = nodes[i].x - nodes[j].x, dy = nodes[i].y - nodes[j].y
+          const d2 = dx*dx + dy*dy
+          if (d2 < MAX*MAX) {
+            ctx.strokeStyle = `rgba(6,182,212,${(1 - Math.sqrt(d2)/MAX) * 0.11})`
+            ctx.lineWidth = 0.5
+            ctx.beginPath(); ctx.moveTo(nodes[i].x, nodes[i].y); ctx.lineTo(nodes[j].x, nodes[j].y); ctx.stroke()
+          }
+        }
+      }
+      // Pulses
+      for (let p = pulses.length - 1; p >= 0; p--) {
+        pulses[p].t += 0.019
+        if (pulses[p].t >= 1) { pulses.splice(p, 1); continue }
+        const { from, to, t } = pulses[p]
+        const n1 = nodes[from], n2 = nodes[to]
+        const dx = n1.x - n2.x, dy = n1.y - n2.y
+        if (dx*dx + dy*dy > MAX*MAX) { pulses.splice(p, 1); continue }
+        const x = n1.x + (n2.x - n1.x) * t, y = n1.y + (n2.y - n1.y) * t
+        ctx.fillStyle = `rgba(6,182,212,${Math.sin(t * Math.PI) * 0.85})`
+        ctx.beginPath(); ctx.arc(x, y, 2, 0, Math.PI * 2); ctx.fill()
+      }
+      // Nodes
+      nodes.forEach(n => {
+        const pulse = 0.5 + 0.5 * Math.sin(n.t)
+        if (n.r > 1.5) {
+          const g = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, 10)
+          g.addColorStop(0, `rgba(6,182,212,${0.12 + pulse * 0.08})`); g.addColorStop(1, 'rgba(6,182,212,0)')
+          ctx.fillStyle = g; ctx.beginPath(); ctx.arc(n.x, n.y, 10, 0, Math.PI * 2); ctx.fill()
+        }
+        ctx.fillStyle = `rgba(6,182,212,${0.2 + pulse * 0.35})`
+        ctx.beginPath(); ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2); ctx.fill()
+        if (n.label) {
+          ctx.fillStyle = `rgba(100,116,139,${0.35 + pulse * 0.2})`
+          ctx.font = '7px monospace'
+          ctx.fillText(n.label, n.x + n.r + 5, n.y + 3)
+        }
+      })
+      animId = requestAnimationFrame(draw)
+    }
+    draw()
+    return () => { cancelAnimationFrame(animId); window.removeEventListener('resize', resize) }
+  }, [])
+  return <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
+}
+
+function LoginPage({ onLogin, darkMode, onToggleDark, usersAuth = USERS_AUTH }) {
+  const [email, setEmail]       = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError]       = useState('')
+  const [loading, setLoading]   = useState(false)
+  const [bootLines, setBootLines] = useState([])
+  const [formReady, setFormReady] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    const msgs = [
+      '> HOLYSEC OPS PLATFORM v1.0 — STARTING...',
+      '> SECURE CHANNEL ESTABLISHED [AES-256-GCM]',
+      '> THREAT INTELLIGENCE MODULE LOADED',
+      '> AUTHENTICATION REQUIRED.',
+    ]
+    const timers = msgs.map((msg, i) =>
+      setTimeout(() => {
+        if (cancelled) return
+        setBootLines(prev => [...prev, msg])
+        if (i === msgs.length - 1) setTimeout(() => { if (!cancelled) setFormReady(true) }, 250)
+      }, 300 + i * 380)
+    )
+    return () => { cancelled = true; timers.forEach(clearTimeout) }
+  }, [])
+
+  const handleSubmit = (e) => {
+    e.preventDefault()
+    setError('')
+    setLoading(true)
+    setTimeout(() => {
+      const auth = usersAuth.find(u => u.email === email && u.password === password)
+      if (!auth) { setError('Ungültige Zugangsdaten.'); setLoading(false); return }
+      onLogin(auth.memberId)
+    }, 500)
+  }
+
+  return (
+    <div className="h-screen bg-[#0a0a0a] flex items-center justify-center relative overflow-hidden">
+      {/* Dark/Light toggle */}
+      <button
+        onClick={onToggleDark}
+        className="absolute top-4 right-4 z-20 p-2 rounded-lg border border-[#1e293b] bg-[#0f172a]/80 backdrop-blur-sm text-slate-400 hover:text-cyan-400 hover:border-cyan-500/40 transition-all"
+        title={darkMode ? 'Light Mode aktivieren' : 'Dark Mode aktivieren'}
+      >
+        {darkMode ? <Sun size={15} /> : <Moon size={15} />}
+      </button>
+
+      {/* Network canvas background */}
+      <NetworkCanvas />
+
+      {/* Radial glow center */}
+      <div className="absolute inset-0 pointer-events-none"
+        style={{ background: 'radial-gradient(ellipse 55% 45% at 50% 50%, rgba(6,182,212,0.05) 0%, transparent 70%)' }} />
+
+      {/* Corner vignette */}
+      <div className="absolute inset-0 pointer-events-none"
+        style={{ background: 'radial-gradient(ellipse 100% 100% at 50% 50%, transparent 35%, rgba(0,0,0,0.75) 100%)' }} />
+
+      <div className="relative w-full max-w-sm px-4 z-10">
+        {/* Logo */}
+        <div className="text-center mb-5">
+          <div className="icon-ring inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 mb-4 relative overflow-hidden">
+            <Crown size={28} className="text-cyan-400 relative z-10" />
+            <div className="absolute inset-0 animate-pulse bg-cyan-500/5" />
+            <div className="icon-ring-glow" />
+          </div>
+          <h1 className="cyber-glitch text-2xl font-mono font-black text-slate-100 tracking-[0.3em]">
+            HOLY<span className="text-cyan-400">SEC</span>
+          </h1>
+          <p className="text-[10px] font-mono text-slate-600 mt-1 tracking-widest">BLESSED BY OFFENSE · BUILT FOR DEFENSE</p>
+        </div>
+
+        {/* Boot sequence */}
+        <div className="mb-5 min-h-[68px] space-y-1">
+          {bootLines.map((line, i) => (
+            <div key={i} className="boot-line flex items-center gap-2">
+              <span className={`text-[10px] font-mono ${i === bootLines.length - 1 && !formReady ? 'text-cyan-400' : 'text-slate-700'}`}>
+                {line}
+              </span>
+              {i === bootLines.length - 1 && !formReady && (
+                <span className="inline-block w-1.5 h-3 bg-cyan-400 animate-pulse" />
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* Card */}
+        <div style={formReady ? {} : { opacity: 0, pointerEvents: 'none' }}
+          className={formReady ? 'form-in' : ''}>
+          {/* Corner brackets */}
+          <div className="absolute pointer-events-none" style={{ inset: '-4px' }}>
+            <div className="corner absolute top-0 left-0 border-t-2 border-l-2 border-cyan-500/70 rounded-tl" />
+            <div className="corner absolute top-0 right-0 border-t-2 border-r-2 border-cyan-500/70 rounded-tr" style={{ animationDelay: '0.1s' }} />
+            <div className="corner absolute bottom-0 left-0 border-b-2 border-l-2 border-cyan-500/70 rounded-bl" style={{ animationDelay: '0.2s' }} />
+            <div className="corner absolute bottom-0 right-0 border-b-2 border-r-2 border-cyan-500/70 rounded-br" style={{ animationDelay: '0.3s' }} />
+          </div>
+
+          <div className="neon-card bg-[#0f172a] border border-cyan-500/15 rounded-2xl p-7 relative overflow-hidden">
+            <div className="neon-card-glow" />
+            {/* Scan beam */}
+            <div className="scan-beam" />
+
+            <div className="flex items-center gap-2 mb-6">
+              <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+              <h2 className="text-[10px] font-mono text-slate-500 uppercase tracking-[0.25em]">
+                Operator Authentication
+              </h2>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="text-[10px] font-mono text-slate-600 uppercase tracking-wider block mb-1.5">E-Mail</label>
+                <input type="email" value={email} onChange={e => setEmail(e.target.value)} required
+                  placeholder="user@holysec.de"
+                  className="w-full bg-[#0a0a0a] border border-[#1e293b] rounded-lg px-4 py-2.5 text-sm font-mono text-slate-200 placeholder-slate-700 focus:outline-none focus:border-cyan-500/60 transition-all"
+                  style={{ transition: 'border-color 0.2s, box-shadow 0.2s' }}
+                  onFocus={e => e.target.style.boxShadow = '0 0 14px rgba(6,182,212,0.18)'}
+                  onBlur={e => e.target.style.boxShadow = 'none'} />
+              </div>
+              <div>
+                <label className="text-[10px] font-mono text-slate-600 uppercase tracking-wider block mb-1.5">Passwort</label>
+                <input type="password" value={password} onChange={e => setPassword(e.target.value)} required
+                  placeholder="••••••••••••"
+                  className="w-full bg-[#0a0a0a] border border-[#1e293b] rounded-lg px-4 py-2.5 text-sm font-mono text-slate-200 placeholder-slate-700 focus:outline-none focus:border-cyan-500/60 transition-all"
+                  style={{ transition: 'border-color 0.2s, box-shadow 0.2s' }}
+                  onFocus={e => e.target.style.boxShadow = '0 0 14px rgba(6,182,212,0.18)'}
+                  onBlur={e => e.target.style.boxShadow = 'none'} />
+              </div>
+
+              {error && (
+                <div className="flex items-center gap-2 text-xs font-mono text-red-400 bg-red-400/8 border border-red-400/20 rounded-lg px-3 py-2">
+                  <AlertTriangle size={12} /> {error}
+                </div>
+              )}
+
+              <button type="submit" disabled={loading}
+                className="w-full py-2.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 active:bg-cyan-600 text-black font-mono font-bold text-sm tracking-widest transition-all disabled:opacity-60 flex items-center justify-center gap-2 mt-2"
+                style={{ boxShadow: '0 0 20px rgba(6,182,212,0.3)' }}
+                onMouseEnter={e => e.currentTarget.style.boxShadow = '0 0 32px rgba(6,182,212,0.55)'}
+                onMouseLeave={e => e.currentTarget.style.boxShadow = '0 0 20px rgba(6,182,212,0.3)'}>
+                {loading
+                  ? <div className="w-4 h-4 border-2 border-black/20 border-t-black rounded-full animate-spin" />
+                  : <><KeyRound size={14} /> EINLOGGEN</>
+                }
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── SIDEBAR ─────────────────────────────────────────────────────────────────
+
+function Sidebar({ active, onNav, collapsed, onToggle, currentUser, onLogout }) {
+  return (
+    <aside className={`flex flex-col bg-[#0a0a0a] border-r border-[#1e293b] transition-all duration-300 ${collapsed ? 'w-16' : 'w-56'} shrink-0`}>
+      <div className="flex items-center justify-between px-4 py-5 border-b border-[#1e293b]">
+        {!collapsed && (
+          <div>
+            <div className="text-xs font-mono font-bold text-cyan-400 tracking-[0.2em] text-glow">HOLYSEC</div>
+            <div className="text-[10px] font-mono text-slate-500 tracking-[0.15em]">// Leif Balthasar</div>
+          </div>
+        )}
+        <button onClick={onToggle} className="p-1 rounded text-slate-500 hover:text-cyan-400 transition-colors ml-auto">
+          {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+        </button>
+      </div>
+
+      <nav className="flex-1 px-2 py-4 space-y-1">
+        {NAV_ITEMS.filter(item => !item.roles || item.roles.includes(currentUser?.role)).map(({ id, label, icon: Icon }) => {
+          const isActive = active === id
+          return (
+            <button
+              key={id}
+              onClick={() => onNav(id)}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded text-left transition-all duration-150 group
+                ${isActive
+                  ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20'
+                  : 'text-slate-500 hover:text-slate-200 hover:bg-slate-800/50 border border-transparent'
+                }`}
+            >
+              <Icon size={16} className={`shrink-0 ${isActive ? 'text-cyan-400' : 'text-slate-500 group-hover:text-slate-300'}`} />
+              {!collapsed && (
+                <span className="text-xs font-mono font-medium tracking-wide truncate">{label}</span>
+              )}
+              {!collapsed && isActive && (
+                <div className="ml-auto w-1 h-1 rounded-full bg-cyan-400 animate-pulse" />
+              )}
+            </button>
+          )
+        })}
+      </nav>
+
+      <div className="px-3 py-3 border-t border-[#1e293b]">
+        {collapsed ? (
+          <button onClick={onLogout} title="Logout"
+            className="w-full flex justify-center p-2 rounded text-slate-700 hover:text-red-400 hover:bg-red-400/10 transition-all">
+            <LogOut size={14} />
+          </button>
+        ) : currentUser ? (
+          <div className="flex items-center gap-2.5">
+            <MemberAvatar member={currentUser} size="md" />
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-mono text-slate-300 truncate">{currentUser.name}</div>
+              <div className="text-[10px] font-mono text-slate-600">{currentUser.role}</div>
+            </div>
+            <button onClick={onLogout} title="Logout"
+              className="p-1.5 rounded text-slate-700 hover:text-red-400 hover:bg-red-400/10 transition-all shrink-0">
+              <LogOut size={13} />
+            </button>
+          </div>
+        ) : null}
+      </div>
+    </aside>
+  )
+}
+
+// ─── TOPBAR ──────────────────────────────────────────────────────────────────
+
+function TopBar({ title, subtitle, currentUser, assignments, clients: allClients = CLIENTS, engagements: allEngagements = ENGAGEMENTS, activeTimer, onClockIn, onClockOut, userPresence, onPresenceChange, darkMode, onToggleDark }) {
+  const [showNotifs, setShowNotifs] = useState(false)
+  const [showPresence, setShowPresence] = useState(false)
+  const [readNotifs, setReadNotifs] = useState(new Set())
+  const [elapsed, setElapsed] = useState(0)
+  const { clients: scopeClients, findings: scopeFindings, engagements: scopeEngagements } = getMyScope(currentUser, assignments, allClients)
+
+  const isTimerMine = activeTimer?.userId === currentUser?.id
+  useEffect(() => {
+    if (!isTimerMine) { setElapsed(0); return }
+    setElapsed(Math.floor((Date.now() - activeTimer.start) / 1000))
+    const id = setInterval(() => setElapsed(Math.floor((Date.now() - activeTimer.start) / 1000)), 1000)
+    return () => clearInterval(id)
+  }, [isTimerMine, activeTimer])
+
+  const allNotifItems = [
+    ...scopeFindings.filter(f => f.severity === 'CRITICAL' && f.status === 'Open').slice(0, 3).map(f => {
+      const client = scopeClients.find(c => c.id === f.clientId)
+      return { id: f.id, Icon: AlertTriangle, color: 'text-red-400', bg: 'bg-red-500/5 border-red-500/10', label: 'Critical Finding offen', body: f.title, sub: client?.name }
+    }),
+    ...scopeClients.filter(c => { const d = daysUntil(c.nextTest); return d >= 0 && d <= 14 }).slice(0, 2).map(c => {
+      const d = daysUntil(c.nextTest)
+      return { id: `t-${c.id}`, Icon: Calendar, color: 'text-yellow-400', bg: 'bg-yellow-500/5 border-yellow-500/10', label: `Test in ${d === 0 ? 'HEUTE' : d + 'd'}`, body: c.name, sub: c.industry }
+    }),
+    ...scopeEngagements.filter(e => e.status === 'Active').slice(0, 2).map(e => {
+      const client = scopeClients.find(c => c.id === e.clientId)
+      return { id: `e-${e.id}`, Icon: Activity, color: 'text-cyan-400', bg: 'bg-cyan-500/5 border-cyan-500/10', label: 'Aktives Engagement', body: e.title, sub: client?.name }
+    }),
+  ]
+  const notifItems = allNotifItems.filter(n => !readNotifs.has(n.id))
+  const markRead = (id) => setReadNotifs(prev => new Set([...prev, id]))
+  const markAllRead = () => setReadNotifs(new Set(allNotifItems.map(n => n.id)))
+
+  const presenceCfg = {
+    online: { dot: 'bg-green-400', text: 'text-green-400', label: 'ONLINE', ping: true },
+    away:   { dot: 'bg-yellow-400', text: 'text-yellow-400', label: 'ABWESEND', ping: false },
+  }
+  const pCfg = presenceCfg[userPresence] || presenceCfg.online
+
+  return (
+    <header className="flex items-center justify-between px-6 py-4 border-b border-[#1e293b] bg-[#0a0a0a] shrink-0 relative z-20">
+      <div>
+        <h1 className="text-sm font-mono font-bold text-slate-100 tracking-widest uppercase">{title}</h1>
+        {subtitle && <p className="text-xs font-mono text-slate-600 mt-0.5">{subtitle}</p>}
+      </div>
+      <div className="flex items-center gap-3">
+        {/* Dark/Light toggle */}
+        <button onClick={onToggleDark}
+          className="p-2 rounded text-slate-500 hover:text-cyan-400 hover:bg-slate-800 transition-all"
+          title={darkMode ? 'Light Mode' : 'Dark Mode'}>
+          {darkMode ? <Sun size={15} /> : <Moon size={15} />}
+        </button>
+
+        {/* Notifications */}
+        <div className="relative">
+          {notifItems.length > 0 && (
+            <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center z-10 pointer-events-none">
+              <span className="text-[8px] font-mono font-bold text-white leading-none">{notifItems.length}</span>
+            </span>
+          )}
+          <button
+            onClick={() => setShowNotifs(v => !v)}
+            className={`p-2 rounded transition-all ${showNotifs ? 'text-cyan-400 bg-slate-800' : 'text-slate-500 hover:text-slate-200 hover:bg-slate-800'}`}>
+            <Bell size={15} />
+          </button>
+
+          {showNotifs && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setShowNotifs(false)} />
+              <div className="absolute right-0 top-11 w-80 bg-[#0f172a] border border-[#1e293b] rounded-xl shadow-2xl z-50 overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e293b]">
+                  <span className="text-xs font-mono font-bold text-slate-200 uppercase tracking-widest">Benachrichtigungen</span>
+                  {notifItems.length > 0 && (
+                    <button onClick={markAllRead} className="text-[10px] font-mono text-slate-500 hover:text-cyan-400 transition-colors">
+                      Alle gelesen
+                    </button>
+                  )}
+                </div>
+                <div className="divide-y divide-[#1e293b] max-h-80 overflow-y-auto">
+                  {notifItems.length === 0 ? (
+                    <div className="px-4 py-6 text-center text-xs font-mono text-slate-600">Keine neuen Benachrichtigungen</div>
+                  ) : notifItems.map(n => (
+                    <div key={n.id} className={`px-4 py-3 flex items-start gap-3 border ${n.bg} hover:bg-slate-800/20 transition-colors`}>
+                      <n.Icon size={13} className={`mt-0.5 shrink-0 ${n.color}`} />
+                      <div className="flex-1 min-w-0">
+                        <div className={`text-[10px] font-mono font-bold uppercase tracking-wider mb-0.5 ${n.color}`}>{n.label}</div>
+                        <div className="text-xs font-mono text-slate-300 truncate">{n.body}</div>
+                        {n.sub && <div className="text-[10px] font-mono text-slate-600">{n.sub}</div>}
+                      </div>
+                      <button onClick={() => markRead(n.id)}
+                        className="shrink-0 p-1 rounded text-slate-700 hover:text-slate-400 transition-colors" title="Als gelesen markieren">
+                        <X size={11} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Clock in/out */}
+        {isTimerMine ? (
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-green-500/5 border border-green-500/25 rounded">
+            <div className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
+            <span className="text-xs font-mono text-green-400 tabular-nums w-16">{formatDuration(elapsed)}</span>
+            <button onClick={onClockOut}
+              className="flex items-center gap-1 text-[10px] font-mono text-slate-500 hover:text-red-400 transition-colors border-l border-green-500/20 pl-2 ml-1">
+              <StopCircle size={11} /> STOP
+            </button>
+          </div>
+        ) : (
+          <button onClick={onClockIn}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-green-500/10 border border-green-500/30 rounded text-xs font-mono text-green-400 hover:bg-green-500/20 hover:border-green-500/50 transition-all">
+            <PlayCircle size={13} /> Einstempeln
+          </button>
+        )}
+
+        {/* Presence */}
+        <div className="relative">
+          <button onClick={() => setShowPresence(v => !v)}
+            className="flex items-center gap-2 px-3 py-1.5 bg-[#0f172a] border border-[#1e293b] hover:border-slate-600 rounded transition-all">
+            <div className={`relative w-2 h-2 rounded-full ${pCfg.dot}`}>
+              {pCfg.ping && <div className={`absolute inset-0 rounded-full ${pCfg.dot} animate-ping opacity-60`} />}
+            </div>
+            <span className={`text-xs font-mono ${pCfg.text}`}>{pCfg.label}</span>
+            <ChevronDown size={10} className="text-slate-600" />
+          </button>
+          {showPresence && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setShowPresence(false)} />
+              <div className="absolute right-0 top-10 w-40 bg-[#0f172a] border border-[#1e293b] rounded-lg shadow-xl z-50 overflow-hidden">
+                {Object.entries(presenceCfg).map(([key, cfg]) => (
+                  <button key={key} onClick={() => { onPresenceChange(key); setShowPresence(false) }}
+                    className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-xs font-mono hover:bg-slate-800/50 transition-colors ${userPresence === key ? cfg.text : 'text-slate-400'}`}>
+                    <div className={`w-2 h-2 rounded-full ${cfg.dot}`} />
+                    {cfg.label}
+                    {userPresence === key && <CheckCircle2 size={10} className="ml-auto" />}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </header>
+  )
+}
+
+// ─── DASHBOARD ───────────────────────────────────────────────────────────────
+
+function Dashboard({ onClientClick, clients: allClients = CLIENTS, currentUser, assignments = {}, findings: allFindingsProp = FINDINGS, engagements: allEngProp = ENGAGEMENTS, onNav }) {
+  const { clients: scopedClients } = getMyScope(currentUser, assignments, allClients, allEngProp, allFindingsProp)
+  const activeClients = scopedClients.filter(c => c.status === 'Active').length
+  const openCriticals = allFindingsProp.filter(f => f.severity === 'CRITICAL' && f.status === 'Open').length
+  const totalOpen = allFindingsProp.filter(f => f.status === 'Open').length
+  const plannedEngagements = allEngProp.filter(e => e.status === 'Planned').length
+
+  const CustomTooltip = ({ active, payload, label }) => {
+    if (active && payload && payload.length) {
+      return (
+        <div className="bg-[#0f172a] border border-[#1e293b] rounded px-3 py-2 text-xs font-mono">
+          <p className="text-slate-400">{label}</p>
+          <p className="text-cyan-400">{payload[0].value} Engagements</p>
+        </div>
+      )
+    }
+    return null
+  }
+
+  const PieTooltip = ({ active, payload }) => {
+    if (active && payload && payload.length) {
+      return (
+        <div className="bg-[#0f172a] border border-[#1e293b] rounded px-3 py-2 text-xs font-mono">
+          <p style={{ color: payload[0].payload.color }}>{payload[0].name}: {payload[0].value}</p>
+        </div>
+      )
+    }
+    return null
+  }
+
+  return (
+    <div className="p-6 space-y-6">
+      {/* KPI row */}
+      <div className="grid grid-cols-4 gap-4">
+        <KpiCard label="Active Clients" value={activeClients} sub={`${scopedClients.length} total`} icon={Users} accent info="Anzahl der Clients mit Status 'Active' — laufende Verträge und aktive Engagements." onClick={() => onNav?.('client-manager', { status: 'Active' })} />
+        <KpiCard label="Open Criticals" value={openCriticals} sub="Require immediate action" icon={AlertTriangle} danger info="CVSS ≥ 9.0 Findings mit Status 'Open' über alle Clients — erfordern sofortige Maßnahmen." onClick={() => onNav?.('findings', { severity: 'CRITICAL', status: 'Open' })} />
+        <KpiCard label="Open Findings" value={totalOpen} sub={`${allFindingsProp.length} total tracked`} icon={ShieldAlert} info="Alle Vulnerabilities mit Status 'Open' über alle Clients und Engagements hinweg." onClick={() => onNav?.('findings', { status: 'Open' })} />
+        <KpiCard label="Planned Tests" value={plannedEngagements} sub="This quarter" icon={Calendar} info="Engagements mit Status 'Planned' — noch nicht gestartete Pentests im aktuellen Quartal." onClick={() => onNav?.('engagements', { status: 'Planned' })} />
+      </div>
+
+      {/* Charts row */}
+      <div className="grid grid-cols-3 gap-4">
+        <Panel className="col-span-2">
+          <PanelHeader title="Engagements / Month" subtitle="Last 12 months" info="Anzahl abgeschlossener und geplanter Engagements pro Monat über die letzten 12 Monate." />
+          <div className="p-4 h-52">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={MONTHLY_ENGAGEMENTS} barSize={18}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                <XAxis dataKey="month" tick={{ fill: '#64748b', fontSize: 10, fontFamily: 'monospace' }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: '#64748b', fontSize: 10, fontFamily: 'monospace' }} axisLine={false} tickLine={false} />
+                <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(6,182,212,0.05)' }} />
+                <Bar dataKey="count" fill="#06b6d4" radius={[3, 3, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </Panel>
+
+        <Panel>
+          <PanelHeader title="Findings by Severity" info="Verteilung aller Findings nach Schweregrad (CRITICAL, HIGH, MEDIUM, LOW) über alle Clients." />
+          <div className="p-4 h-52 flex flex-col items-center justify-center">
+            <ResponsiveContainer width="100%" height="80%">
+              <PieChart>
+                <Pie data={SEVERITY_DIST} cx="50%" cy="50%" innerRadius={45} outerRadius={70} paddingAngle={3} dataKey="value">
+                  {SEVERITY_DIST.map((entry) => (
+                    <Cell key={entry.name} fill={entry.color} stroke="transparent" />
+                  ))}
+                </Pie>
+                <Tooltip content={<PieTooltip />} />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="flex gap-3 mt-1">
+              {SEVERITY_DIST.map(s => (
+                <div key={s.name} className="flex items-center gap-1">
+                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />
+                  <span className="text-[10px] font-mono text-slate-500">{s.name.slice(0,4)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </Panel>
+      </div>
+
+      {/* CVSS Distribution + Recent Findings */}
+      <div className="grid grid-cols-2 gap-4">
+        <Panel>
+          <PanelHeader title="CVSS Score Distribution" info="Häufigkeitsverteilung der CVSS-Scores aller Findings. Zeigt wo sich die Schwachstellen im Scoring-Spektrum konzentrieren." />
+          <div className="p-4 h-44">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={CVSS_DISTRIBUTION}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                <XAxis dataKey="range" tick={{ fill: '#64748b', fontSize: 10, fontFamily: 'monospace' }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: '#64748b', fontSize: 10, fontFamily: 'monospace' }} axisLine={false} tickLine={false} />
+                <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 6, fontFamily: 'monospace', fontSize: 11 }} />
+                <Line type="monotone" dataKey="count" stroke="#06b6d4" strokeWidth={2} dot={{ fill: '#06b6d4', r: 3 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </Panel>
+
+        <Panel>
+          <PanelHeader title="Recent Critical Findings" info="Die neuesten Findings mit Schweregrad CRITICAL (CVSS ≥ 9.0) — sortiert nach Datum, mit aktuellem Behebungsstatus." />
+          <div className="divide-y divide-[#1e293b]">
+            {allFindingsProp.filter(f => f.severity === 'CRITICAL').sort((a,b) => new Date(b.date) - new Date(a.date)).slice(0, 4).map(f => {
+              const client = allClients.find(c => c.id === f.clientId)
+              return (
+                <div key={f.id} className="px-4 py-3 hover:bg-slate-800/30 transition-colors">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-mono text-slate-200 truncate">{f.title}</p>
+                      <p className="text-[10px] font-mono text-slate-600 mt-0.5">{client?.name}</p>
+                    </div>
+                    <StatusBadge status={f.status} />
+                  </div>
+                  <CvssBar score={f.cvss} />
+                </div>
+              )
+            })}
+          </div>
+        </Panel>
+      </div>
+
+      {/* Client tiles */}
+      <Panel>
+        <PanelHeader title="Client Overview" subtitle={`${scopedClients.length} clients total`} info="Alle verwalteten Clients mit Status, Kritikalität und nächstem Testtermin. Klicken für Detailansicht." />
+        <div className="p-4 grid grid-cols-3 gap-3">
+          {scopedClients.map(client => {
+            const ScopeIcon = SCOPE_ICONS[client.scopeType] || Globe
+            const days = daysUntil(client.nextTest)
+            return (
+              <button
+                key={client.id}
+                onClick={() => onClientClick(client.id)}
+                className="text-left p-4 bg-[#0a0a0a] border border-[#1e293b] rounded-lg hover:border-cyan-500/40 hover:bg-cyan-500/3 transition-all duration-200 group"
+              >
+                <div className="flex items-start justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <ScopeIcon size={13} className="text-slate-500 group-hover:text-cyan-400 transition-colors" />
+                    <span className="text-[10px] font-mono text-slate-600">{client.scopeType}</span>
+                  </div>
+                  <StatusBadge status={client.status} />
+                </div>
+                <h3 className="text-sm font-mono font-semibold text-slate-100 mb-0.5 truncate group-hover:text-cyan-300 transition-colors">{client.name}</h3>
+                <p className="text-[10px] font-mono text-slate-600 mb-3">{client.industry}</p>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <SeverityBadge severity={client.criticality} />
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[10px] font-mono text-slate-600">Next test</div>
+                    <div className={`text-xs font-mono font-bold ${days <= 14 ? 'text-red-400' : days <= 30 ? 'text-yellow-400' : 'text-slate-400'}`}>
+                      {days <= 0 ? 'TODAY' : `${days}d`}
+                    </div>
+                  </div>
+                </div>
+                {client.openFindings > 0 && (
+                  <div className="mt-2 flex items-center gap-1">
+                    <AlertTriangle size={10} className="text-red-400" />
+                    <span className="text-[10px] font-mono text-red-400">{client.openFindings} open findings</span>
+                  </div>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      </Panel>
+    </div>
+  )
+}
+
+// ─── CLIENT MODAL ────────────────────────────────────────────────────────────
+
+function ClientModal({ client, onSave, onClose }) {
+  const today = new Date().toISOString().split('T')[0]
+  const [form, setForm] = useState(client ? { ...client, contact: { ...client.contact }, contract: { ...client.contract } } : {
+    id: `c${Date.now()}`,
+    name: '', industry: '', status: 'Active', scopeType: 'Web', criticality: 'MEDIUM',
+    nextTest: today,
+    contact: { name: '', email: '', phone: '' },
+    contract: { start: today, end: '', hours: 80, used: 0 },
+    scope: { ipRanges: [], domains: [], exclusions: [] },
+    findings: [], engagements: [], reports: [], openFindings: 0,
+  })
+
+  const iCls = "w-full bg-[#0a0a0a] border border-[#1e293b] rounded px-3 py-2 text-xs font-mono text-slate-200 placeholder-slate-700 focus:outline-none focus:border-cyan-500/50 transition-colors"
+  const sCls = "w-full bg-[#0a0a0a] border border-[#1e293b] rounded px-3 py-2 text-xs font-mono text-slate-400 focus:outline-none focus:border-cyan-500/50 transition-colors"
+  const lCls = "text-[10px] font-mono text-slate-600 uppercase tracking-wider block mb-1"
+
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+  const setC = (k, v) => setForm(f => ({ ...f, contact: { ...f.contact, [k]: v } }))
+  const setK = (k, v) => setForm(f => ({ ...f, contract: { ...f.contract, [k]: v } }))
+
+  return (
+    <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-6" onClick={onClose}>
+      <div className="bg-[#0f172a] border border-[#1e293b] rounded-2xl w-full max-w-lg shadow-2xl overflow-y-auto max-h-[90vh]" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[#1e293b]">
+          <h2 className="text-sm font-mono font-bold text-slate-100 tracking-wider">
+            {client ? 'CLIENT BEARBEITEN' : 'NEUER CLIENT'}
+          </h2>
+          <button onClick={onClose} className="p-1.5 rounded text-slate-500 hover:text-slate-200 hover:bg-slate-800 transition-all"><X size={14} /></button>
+        </div>
+        <form onSubmit={e => { e.preventDefault(); onSave(form); onClose() }} className="p-6 space-y-5">
+          <div className="grid grid-cols-2 gap-4">
+            <div><label className={lCls}>Name</label><input value={form.name} onChange={e => set('name', e.target.value)} required placeholder="Firmenname" className={iCls} /></div>
+            <div><label className={lCls}>Branche</label><input value={form.industry} onChange={e => set('industry', e.target.value)} required placeholder="z.B. Healthcare" className={iCls} /></div>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className={lCls}>Status</label>
+              <select value={form.status} onChange={e => set('status', e.target.value)} className={sCls}>
+                {['Active','Pending','Completed','On Hold'].map(s => <option key={s}>{s}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className={lCls}>Scope-Typ</label>
+              <select value={form.scopeType} onChange={e => set('scopeType', e.target.value)} className={sCls}>
+                {['Web','Network','Social Engineering','Full Red Team'].map(s => <option key={s}>{s}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className={lCls}>Kritikalität</label>
+              <select value={form.criticality} onChange={e => set('criticality', e.target.value)} className={sCls}>
+                {['CRITICAL','HIGH','MEDIUM','LOW'].map(s => <option key={s}>{s}</option>)}
+              </select>
+            </div>
+          </div>
+          <div><label className={lCls}>Nächster Test</label><input type="date" value={form.nextTest} onChange={e => set('nextTest', e.target.value)} className={iCls} /></div>
+          <div>
+            <div className="text-[10px] font-mono text-cyan-400/70 uppercase tracking-widest mb-3 border-b border-[#1e293b] pb-1">Ansprechpartner</div>
+            <div className="space-y-3">
+              <div><label className={lCls}>Name</label><input value={form.contact.name} onChange={e => setC('name', e.target.value)} placeholder="Vorname Nachname" className={iCls} /></div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className={lCls}>E-Mail</label><input type="email" value={form.contact.email} onChange={e => setC('email', e.target.value)} placeholder="name@firma.de" className={iCls} /></div>
+                <div><label className={lCls}>Telefon</label><input value={form.contact.phone} onChange={e => setC('phone', e.target.value)} placeholder="+49 ..." className={iCls} /></div>
+              </div>
+            </div>
+          </div>
+          <div>
+            <div className="text-[10px] font-mono text-cyan-400/70 uppercase tracking-widest mb-3 border-b border-[#1e293b] pb-1">Vertrag</div>
+            <div className="grid grid-cols-3 gap-3">
+              <div><label className={lCls}>Start</label><input type="date" value={form.contract.start} onChange={e => setK('start', e.target.value)} className={iCls} /></div>
+              <div><label className={lCls}>Ende</label><input type="date" value={form.contract.end} onChange={e => setK('end', e.target.value)} className={iCls} /></div>
+              <div><label className={lCls}>Stunden gesamt</label><input type="number" min="1" value={form.contract.hours} onChange={e => setK('hours', parseInt(e.target.value) || 0)} className={iCls} /></div>
+            </div>
+          </div>
+          <div className="flex items-center justify-end gap-3 pt-2">
+            <button type="button" onClick={onClose} className="px-4 py-2 rounded border border-[#1e293b] text-xs font-mono text-slate-400 hover:text-slate-200 transition-all">Abbrechen</button>
+            <button type="submit" className="px-4 py-2 rounded bg-cyan-500 hover:bg-cyan-400 text-black text-xs font-mono font-bold tracking-wider transition-all">
+              {client ? 'SPEICHERN' : 'HINZUFÜGEN'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ─── CLIENT LIST ─────────────────────────────────────────────────────────────
+
+function ClientList({ clients: allClients = CLIENTS, onClientClick, currentUser, assignments, onAdd, onEdit, onDelete, defaultStatus = 'All' }) {
+  const [search, setSearch] = useState('')
+  const [filterStatus, setFilterStatus] = useState(defaultStatus)
+  const [showModal, setShowModal] = useState(false)
+  const [editingClient, setEditingClient] = useState(null)
+  const [confirmDelete, setConfirmDelete] = useState(null)
+  const isAdmin = currentUser?.role === 'Admin'
+  const { clients: scopeClients } = getMyScope(currentUser, assignments, allClients)
+
+  const filtered = scopeClients.filter(c => {
+    const q = search.toLowerCase()
+    const matchSearch = c.name.toLowerCase().includes(q) || c.industry.toLowerCase().includes(q) ||
+      (c.contact?.name || '').toLowerCase().includes(q)
+    const matchStatus = filterStatus === 'All' || c.status === filterStatus
+    return matchSearch && matchStatus
+  })
+
+  const handleSave = (client) => {
+    if (editingClient) onEdit(client)
+    else onAdd(client)
+    setEditingClient(null)
+    setShowModal(false)
+  }
+
+  return (
+    <div className="p-6 space-y-4">
+      <div className="flex items-center gap-3 justify-between flex-wrap">
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+            <input value={search} onChange={e => setSearch(e.target.value)}
+              placeholder="Name, Branche, Ansprechpartner..."
+              className="bg-[#0f172a] border border-[#1e293b] rounded px-3 py-2 pl-8 text-xs font-mono text-slate-200 placeholder-slate-600 focus:outline-none focus:border-cyan-500/50 w-68" />
+          </div>
+          {['All', 'Active', 'Pending', 'Completed', 'On Hold'].map(s => (
+            <button key={s} onClick={() => setFilterStatus(s)}
+              className={`px-3 py-1.5 rounded text-xs font-mono border transition-all ${filterStatus === s ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-400' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
+              {s}
+            </button>
+          ))}
+        </div>
+        {isAdmin && (
+          <button onClick={() => { setEditingClient(null); setShowModal(true) }}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-500/10 border border-cyan-500/30 rounded text-xs font-mono text-cyan-400 hover:bg-cyan-500/20 transition-all">
+            <Plus size={13} /> Neuer Client
+          </button>
+        )}
+      </div>
+
+      <Panel>
+        <PanelHeader
+          title="Client Management"
+          subtitle={`${filtered.length} von ${scopeClients.length} Clients`}
+          info="Verwaltungsübersicht aller Clients. Zeigt Kontaktinfos, Vertragsstatus, offene Findings, Engagements und den Report-Bestand nach Typ (TR = Technical Report, ES = Executive Summary, RP = Remediation Plan)."
+        />
+        <div className="overflow-x-auto">
+        <table className="w-full text-xs font-mono">
+          <thead>
+            <tr className="border-b border-[#1e293b]">
+              {['Client', 'Branche', 'Ansprechpartner', 'E-Mail', 'Vertrag', 'Findings', 'Engs', 'Reports', 'Status', ''].map(h => (
+                <th key={h} className="px-4 py-3 text-left text-[10px] text-slate-600 uppercase tracking-wider font-normal whitespace-nowrap">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-[#1e293b]">
+            {filtered.map(client => {
+              const pct = Math.round((client.contract.used / client.contract.hours) * 100)
+              const clientReports = REPORTS.filter(r => r.clientId === client.id)
+              const trCount  = clientReports.filter(r => r.type === 'Technical Report').length
+              const esCount  = clientReports.filter(r => r.type === 'Executive Summary').length
+              const rpCount  = clientReports.filter(r => r.type === 'Remediation Plan').length
+              const clientEngs = ENGAGEMENTS.filter(e => e.clientId === client.id).length
+              const openFindings = client.openFindings ?? 0
+              return (
+                <tr key={client.id} className="hover:bg-slate-800/20 transition-colors group">
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    <button onClick={() => onClientClick(client.id)} className="text-left hover:text-cyan-300 transition-colors">
+                      <div className="font-semibold text-slate-100">{client.name}</div>
+                      <div className="text-slate-600 text-[10px]">{client.id}</div>
+                    </button>
+                  </td>
+                  <td className="px-4 py-3 text-slate-400 whitespace-nowrap">{client.industry}</td>
+                  <td className="px-4 py-3 text-slate-300 whitespace-nowrap">{client.contact?.name || '—'}</td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    <span className="text-cyan-400 text-[10px]">{client.contact?.email || '—'}</span>
+                  </td>
+                  <td className="px-4 py-3 w-36">
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full ${pct > 80 ? 'bg-red-500' : 'bg-cyan-500'}`} style={{ width: `${Math.min(pct, 100)}%` }} />
+                      </div>
+                      <span className={`text-[10px] w-8 shrink-0 text-right ${pct > 80 ? 'text-red-400' : 'text-slate-500'}`}>{pct}%</span>
+                    </div>
+                    <div className="text-[9px] text-slate-700 mt-0.5 whitespace-nowrap">{client.contract.used}h / {client.contract.hours}h</div>
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    <span className={`text-xs font-mono font-bold ${openFindings > 0 ? 'text-red-400' : 'text-slate-600'}`}>{openFindings}</span>
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    <span className="text-xs font-mono text-slate-400">{clientEngs}</span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-1.5 whitespace-nowrap">
+                      <span className="text-[9px] font-mono text-slate-500 bg-slate-800 border border-[#1e293b] rounded px-1.5 py-0.5" title="Technical Reports">TR <span className="text-slate-300 font-bold">{trCount}</span></span>
+                      <span className="text-[9px] font-mono text-slate-500 bg-slate-800 border border-[#1e293b] rounded px-1.5 py-0.5" title="Executive Summaries">ES <span className="text-slate-300 font-bold">{esCount}</span></span>
+                      <span className="text-[9px] font-mono text-slate-500 bg-slate-800 border border-[#1e293b] rounded px-1.5 py-0.5" title="Remediation Plans">RP <span className="text-slate-300 font-bold">{rpCount}</span></span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap"><StatusBadge status={client.status} /></td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      {isAdmin && (
+                        <>
+                          <button onClick={() => { setEditingClient(client); setShowModal(true) }}
+                            className="p-1.5 rounded border border-[#1e293b] text-slate-500 hover:text-cyan-400 hover:border-cyan-500/40 transition-all" title="Bearbeiten">
+                            <Edit3 size={11} />
+                          </button>
+                          <button onClick={() => setConfirmDelete(client)}
+                            className="p-1.5 rounded border border-[#1e293b] text-slate-500 hover:text-red-400 hover:border-red-500/40 transition-all" title="Löschen">
+                            <Trash2 size={11} />
+                          </button>
+                        </>
+                      )}
+                      <button onClick={() => onClientClick(client.id)}
+                        className="p-1.5 rounded border border-[#1e293b] text-slate-500 hover:text-slate-300 transition-all" title="Details">
+                        <ChevronRight size={11} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+        </div>
+        {filtered.length === 0 && (
+          <div className="py-10 text-center text-xs font-mono text-slate-600">Keine Clients gefunden.</div>
+        )}
+      </Panel>
+
+      {confirmDelete && (
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-6">
+          <div className="bg-[#0f172a] border border-red-500/30 rounded-xl w-full max-w-sm p-6 shadow-2xl">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 rounded-lg bg-red-500/10"><Trash2 size={16} className="text-red-400" /></div>
+              <h3 className="text-sm font-mono font-bold text-slate-100">Client löschen?</h3>
+            </div>
+            <p className="text-xs font-mono text-slate-400 mb-5">
+              <span className="text-slate-200 font-semibold">{confirmDelete.name}</span> wird unwiderruflich entfernt.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmDelete(null)}
+                className="flex-1 py-2 rounded border border-[#1e293b] text-xs font-mono text-slate-400 hover:text-slate-200 transition-all">
+                Abbrechen
+              </button>
+              <button onClick={() => { onDelete(confirmDelete.id); setConfirmDelete(null) }}
+                className="flex-1 py-2 rounded bg-red-500/20 border border-red-500/30 text-xs font-mono font-bold text-red-400 hover:bg-red-500/30 transition-all">
+                LÖSCHEN
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showModal && (
+        <ClientModal client={editingClient} onSave={handleSave} onClose={() => { setShowModal(false); setEditingClient(null) }} />
+      )}
+    </div>
+  )
+}
+
+// ─── CLIENT DETAIL ────────────────────────────────────────────────────────────
+
+function ClientDetail({ clientId, onBack, clients: allClients = CLIENTS }) {
+  const [tab, setTab] = useState('overview')
+  const client = allClients.find(c => c.id === clientId)
+  if (!client) return null
+
+  const findings = FINDINGS.filter(f => client.findings.includes(f.id))
+  const engagements = ENGAGEMENTS.filter(e => client.engagements.includes(e.id))
+  const reports = REPORTS.filter(r => client.reports.includes(r.id))
+  const hoursPercent = Math.round((client.contract.used / client.contract.hours) * 100)
+  const ScopeIcon = SCOPE_ICONS[client.scopeType] || Globe
+
+  return (
+    <div className="p-6 space-y-5">
+      <button onClick={onBack} className="flex items-center gap-2 text-xs font-mono text-slate-500 hover:text-cyan-400 transition-colors">
+        <ChevronLeft size={14} /> Back to Clients
+      </button>
+
+      {/* Header */}
+      <div className="flex items-start justify-between">
+        <div>
+          <div className="flex items-center gap-3 mb-1">
+            <ScopeIcon size={18} className="text-cyan-400" />
+            <h1 className="text-xl font-mono font-bold text-slate-100">{client.name}</h1>
+            <StatusBadge status={client.status} size="md" />
+          </div>
+          <p className="text-sm font-mono text-slate-500">{client.industry} · {client.id}</p>
+        </div>
+        <SeverityBadge severity={client.criticality} />
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-1 border-b border-[#1e293b] pb-0">
+        {['overview', 'findings', 'engagements', 'reports'].map(t => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={`px-4 py-2 text-xs font-mono capitalize border-b-2 transition-all ${tab === t ? 'border-cyan-400 text-cyan-400' : 'border-transparent text-slate-500 hover:text-slate-300'}`}
+          >
+            {t}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'overview' && (() => {
+        const openF = findings.filter(f => f.status === 'Open').length
+        const closedF = findings.filter(f => f.status === 'Closed').length
+        const remainHours = client.contract.hours - client.contract.used
+        const daysLeft = daysUntil(client.contract.end)
+        const criticalOpen = findings.filter(f => f.severity === 'CRITICAL' && f.status === 'Open').length
+        return (
+          <div className="space-y-4">
+            {/* Quick KPIs */}
+            <div className="grid grid-cols-4 gap-3">
+              <KpiCard label="Open Findings" value={openF} sub="Aktuell offen" icon={ShieldAlert} danger={criticalOpen > 0} info="Alle Findings mit Status 'Open' für diesen Client — inkl. kritischer Befunde die sofortige Maßnahmen erfordern." />
+              <KpiCard label="Closed" value={closedF} sub="Behoben" icon={CheckCircle2} accent={closedF > 0} info="Findings die erfolgreich behoben und verifiziert wurden." />
+              <KpiCard label="Restbudget" value={`${remainHours}h`} sub={`von ${client.contract.hours}h gesamt`} icon={Clock} danger={hoursPercent > 85} info="Verbleibende Vertragsstunden. Bei > 85% Verbrauch wird der Wert rot — Nachverhandlung empfohlen." />
+              <KpiCard label="Vertrag endet" value={daysLeft <= 0 ? 'ABGELAUFEN' : `${daysLeft}d`} sub={client.contract.end} icon={Calendar} danger={daysLeft <= 30 && daysLeft >= 0} info="Verbleibende Tage bis Vertragsende. Unter 30 Tagen wird eine Verlängerung empfohlen." />
+            </div>
+
+            <div className="grid grid-cols-3 gap-4">
+              {/* Contact */}
+              <Panel className="p-4">
+                <div className="flex items-center gap-1.5 mb-3">
+                  <h3 className="text-[10px] font-mono text-slate-600 uppercase tracking-widest">Ansprechpartner</h3>
+                  <InfoTooltip text="Primärer Ansprechpartner beim Kunden für alle Pentest-relevanten Abstimmungen und Report-Übergaben." />
+                </div>
+                <div className="space-y-2 text-xs font-mono">
+                  <div><span className="text-slate-600">Name</span><div className="text-slate-200">{client.contact.name}</div></div>
+                  <div><span className="text-slate-600">E-Mail</span><div className="text-cyan-400">{client.contact.email}</div></div>
+                  <div><span className="text-slate-600">Telefon</span><div className="text-slate-300">{client.contact.phone}</div></div>
+                </div>
+              </Panel>
+
+              {/* Contract */}
+              <Panel className="p-4">
+                <div className="flex items-center gap-1.5 mb-3">
+                  <h3 className="text-[10px] font-mono text-slate-600 uppercase tracking-widest">Vertrag</h3>
+                  <InfoTooltip text="Vertragslaufzeit und Stundenbudget. Das Budget zeigt gebuchte vs. verbrauchte Stunden — Überschreitungen müssen separat abgerechnet werden." />
+                </div>
+                <div className="space-y-2 text-xs font-mono">
+                  <div className="flex justify-between"><span className="text-slate-600">Start</span><span className="text-slate-300">{client.contract.start}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-600">Ende</span><span className={daysLeft <= 30 ? 'text-red-400' : 'text-slate-300'}>{client.contract.end}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-600">Stunden</span><span className="text-slate-300">{client.contract.used}h / {client.contract.hours}h</span></div>
+                  <div className="flex justify-between"><span className="text-slate-600">Verbleibend</span><span className={remainHours < 20 ? 'text-red-400 font-semibold' : 'text-cyan-400'}>{remainHours}h</span></div>
+                  <div className="mt-2">
+                    <div className="flex justify-between mb-1 text-[10px]">
+                      <span className="text-slate-600">Auslastung</span>
+                      <span className={hoursPercent > 80 ? 'text-red-400' : 'text-cyan-400'}>{hoursPercent}%</span>
+                    </div>
+                    <div className="h-1.5 bg-slate-800 rounded-full">
+                      <div className={`h-full rounded-full ${hoursPercent > 80 ? 'bg-red-500' : 'bg-cyan-500'}`} style={{ width: `${hoursPercent}%` }} />
+                    </div>
+                  </div>
+                </div>
+              </Panel>
+
+              {/* Scope */}
+              <Panel className="p-4">
+                <div className="flex items-center gap-1.5 mb-3">
+                  <h3 className="text-[10px] font-mono text-slate-600 uppercase tracking-widest">Scope</h3>
+                  <InfoTooltip text="Technischer Testumfang: IP-Ranges (CIDR-Notation), Domains und Systeme die aktiv getestet werden dürfen. Nur innerhalb dieses Scopes ist Testing erlaubt." />
+                </div>
+                <div className="space-y-2 text-xs font-mono">
+                  <div>
+                    <div className="text-slate-600 mb-1 flex items-center gap-1">IP Ranges <InfoTooltip text="IPv4/IPv6 Netzwerkbereiche in CIDR-Notation die aktiv penetrationgetestet werden dürfen." /></div>
+                    {client.scope.ipRanges.map(ip => (
+                      <div key={ip} className="text-cyan-400 bg-cyan-500/5 rounded px-2 py-0.5 mb-0.5">{ip}</div>
+                    ))}
+                  </div>
+                  <div>
+                    <div className="text-slate-600 mb-1 flex items-center gap-1">Domains <InfoTooltip text="Domains und Subdomains die im Scope sind. Wildcard-Einträge (*.domain) umfassen alle Subdomains." /></div>
+                    {client.scope.domains.slice(0, 3).map(d => (
+                      <div key={d} className="text-slate-300 truncate">{d}</div>
+                    ))}
+                    {client.scope.domains.length > 3 && <div className="text-slate-600">+{client.scope.domains.length - 3} more</div>}
+                  </div>
+                </div>
+              </Panel>
+
+              {/* Exclusions */}
+              <Panel className="p-4 col-span-3">
+                <div className="flex items-center gap-1.5 mb-2">
+                  <h3 className="text-[10px] font-mono text-slate-600 uppercase tracking-widest">Ausschlüsse (Out-of-Scope)</h3>
+                  <InfoTooltip text="Systeme und Bereiche die explizit NICHT getestet werden dürfen — meist produktionskritische Komponenten oder externe Drittanbieter-Systeme. Verstöße müssen sofort gemeldet werden." />
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {client.scope.exclusions.map(ex => (
+                    <span key={ex} className="text-xs font-mono text-yellow-400 bg-yellow-400/5 border border-yellow-400/20 rounded px-2 py-1">⚠ {ex}</span>
+                  ))}
+                </div>
+              </Panel>
+            </div>
+          </div>
+        )
+      })()}
+
+      {tab === 'findings' && (
+        <Panel>
+          <PanelHeader title="Findings" subtitle={`${findings.length} total`} />
+          <table className="w-full text-xs font-mono">
+            <thead>
+              <tr className="border-b border-[#1e293b]">
+                {['Title', 'CVE', 'CVSS', 'Category', 'Status', 'Date'].map(h => (
+                  <th key={h} className="px-4 py-3 text-left text-[10px] text-slate-600 uppercase tracking-wider font-normal">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#1e293b]">
+              {findings.map(f => (
+                <tr key={f.id} className="hover:bg-slate-800/30 transition-colors">
+                  <td className="px-4 py-3">
+                    <div className="text-slate-200 font-medium">{f.title}</div>
+                    <div className="text-slate-600 text-[10px] mt-0.5">{f.description.slice(0, 60)}…</div>
+                  </td>
+                  <td className="px-4 py-3">{f.cve ? <span className="text-cyan-400">{f.cve}</span> : <span className="text-slate-700">—</span>}</td>
+                  <td className="px-4 py-3 w-32"><CvssBar score={f.cvss} /></td>
+                  <td className="px-4 py-3 text-slate-400">{f.category}</td>
+                  <td className="px-4 py-3"><StatusBadge status={f.status} /></td>
+                  <td className="px-4 py-3 text-slate-500">{f.date}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Panel>
+      )}
+
+      {tab === 'engagements' && (
+        <div className="space-y-3">
+          {engagements.map(eng => (
+            <Panel key={eng.id} className="p-4">
+              <div className="flex items-start justify-between mb-2">
+                <div>
+                  <h3 className="text-sm font-mono font-semibold text-slate-100">{eng.title}</h3>
+                  <p className="text-xs font-mono text-slate-500">{eng.start} → {eng.end}</p>
+                </div>
+                <StatusBadge status={eng.status} />
+              </div>
+              <div className="flex gap-2 mt-3">
+                {['Recon', 'Scanning', 'Exploitation', 'Reporting'].map(phase => {
+                  const active = eng.phases.includes(phase)
+                  const colors = { Recon: 'bg-blue-500', Scanning: 'bg-cyan-500', Exploitation: 'bg-red-500', Reporting: 'bg-green-500' }
+                  return (
+                    <div key={phase} className={`flex-1 h-1 rounded-full ${active ? colors[phase] : 'bg-slate-800'}`} />
+                  )
+                })}
+              </div>
+              <div className="flex gap-3 mt-2">
+                {['Recon', 'Scanning', 'Exploitation', 'Reporting'].map(phase => {
+                  const active = eng.phases.includes(phase)
+                  return (
+                    <span key={phase} className={`text-[9px] font-mono flex-1 text-center ${active ? 'text-slate-400' : 'text-slate-700'}`}>{phase}</span>
+                  )
+                })}
+              </div>
+            </Panel>
+          ))}
+        </div>
+      )}
+
+      {tab === 'reports' && (
+        <div className="space-y-3">
+          {reports.length === 0
+            ? <Panel className="p-8 text-center"><p className="text-sm font-mono text-slate-600">No reports available yet.</p></Panel>
+            : reports.map(rep => (
+              <Panel key={rep.id} className="p-4 flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-mono text-slate-100">{rep.title}</h3>
+                  <div className="flex items-center gap-3 mt-1">
+                    <span className="text-xs font-mono text-slate-600">{rep.date}</span>
+                    <span className="text-xs font-mono text-slate-500">{rep.type}</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <StatusBadge status={rep.status} />
+                  <button className="p-1.5 rounded border border-[#1e293b] text-slate-500 hover:text-cyan-400 hover:border-cyan-500/40 transition-all">
+                    <ExternalLink size={12} />
+                  </button>
+                </div>
+              </Panel>
+            ))
+          }
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── FINDINGS TRACKER ────────────────────────────────────────────────────────
+
+const FINDING_CATEGORIES = ['RCE', 'XSS', 'SQLi', 'Auth', 'Crypto', 'Config', 'Exposure', 'DoS', 'PrivEsc', 'Container', 'OT/ICS', 'Other']
+
+function cvssToSeverity(score) {
+  const n = parseFloat(score)
+  if (n >= 9) return 'CRITICAL'
+  if (n >= 7) return 'HIGH'
+  if (n >= 4) return 'MEDIUM'
+  return 'LOW'
+}
+
+function NewFindingModal({ clients = CLIENTS, currentUser, onSave, onClose, editFinding = null }) {
+  const today = new Date().toISOString().split('T')[0]
+  const [form, setForm] = useState(editFinding ? {
+    title: editFinding.title,
+    cve: editFinding.cve || '',
+    cvss: String(editFinding.cvss),
+    severity: editFinding.severity,
+    category: editFinding.category || 'Auth',
+    clientId: editFinding.clientId,
+    status: editFinding.status,
+    date: editFinding.date,
+    description: editFinding.description || '',
+    remediation: editFinding.remediation || '',
+  } : {
+    title: '',
+    cve: '',
+    cvss: '',
+    severity: 'HIGH',
+    category: 'Auth',
+    clientId: clients[0]?.id || '',
+    status: 'Open',
+    date: today,
+    description: '',
+    remediation: '',
+  })
+
+  const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
+
+  const handleCvssChange = (v) => {
+    const n = parseFloat(v)
+    set('cvss', v)
+    if (!isNaN(n) && n >= 0 && n <= 10) set('severity', cvssToSeverity(n))
+  }
+
+  const canSubmit = form.title.trim() && form.clientId && form.cvss !== '' && !isNaN(parseFloat(form.cvss))
+
+  const handleSubmit = () => {
+    if (!canSubmit) return
+    onSave({
+      id: editFinding ? editFinding.id : `f_${Date.now()}`,
+      clientId: form.clientId,
+      title: form.title.trim(),
+      cve: form.cve.trim() || null,
+      cvss: parseFloat(form.cvss),
+      severity: form.severity,
+      category: form.category,
+      status: form.status,
+      date: form.date,
+      description: form.description.trim(),
+      remediation: form.remediation.trim(),
+    })
+    onClose()
+  }
+
+  const sevColors = { CRITICAL: 'border-red-500/60 bg-red-500/10 text-red-400', HIGH: 'border-orange-500/60 bg-orange-500/10 text-orange-400', MEDIUM: 'border-yellow-500/60 bg-yellow-500/10 text-yellow-400', LOW: 'border-green-500/60 bg-green-500/10 text-green-400' }
+
+  return (
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl p-6 w-full max-w-lg space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-mono font-semibold text-slate-100 flex items-center gap-2">
+            <ShieldAlert size={14} className="text-red-400" /> {editFinding ? 'Finding bearbeiten' : 'Neues Finding'}
+          </h3>
+          <button onClick={onClose} className="text-slate-500 hover:text-slate-300 transition-colors"><X size={16} /></button>
+        </div>
+
+        {/* Title */}
+        <div>
+          <label className="block text-[10px] font-mono text-slate-500 mb-1 uppercase tracking-wider">Titel *</label>
+          <input value={form.title} onChange={e => set('title', e.target.value)}
+            className="w-full bg-[#1e293b] border border-[#334155] rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500/50 transition-colors"
+            placeholder="z.B. SQL-Injection im Login-Formular" />
+        </div>
+
+        {/* Client + Category */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-[10px] font-mono text-slate-500 mb-1 uppercase tracking-wider">Client *</label>
+            <select value={form.clientId} onChange={e => set('clientId', e.target.value)}
+              className="w-full bg-[#1e293b] border border-[#334155] rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500/50 transition-colors">
+              {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-[10px] font-mono text-slate-500 mb-1 uppercase tracking-wider">Kategorie</label>
+            <select value={form.category} onChange={e => set('category', e.target.value)}
+              className="w-full bg-[#1e293b] border border-[#334155] rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500/50 transition-colors">
+              {FINDING_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+        </div>
+
+        {/* CVSS + CVE */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-[10px] font-mono text-slate-500 mb-1 uppercase tracking-wider">CVSS Score *</label>
+            <input type="number" min="0" max="10" step="0.1" value={form.cvss} onChange={e => handleCvssChange(e.target.value)}
+              className="w-full bg-[#1e293b] border border-[#334155] rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500/50 transition-colors"
+              placeholder="0.0 – 10.0" />
+          </div>
+          <div>
+            <label className="block text-[10px] font-mono text-slate-500 mb-1 uppercase tracking-wider">CVE (optional)</label>
+            <input value={form.cve} onChange={e => set('cve', e.target.value)}
+              className="w-full bg-[#1e293b] border border-[#334155] rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500/50 transition-colors"
+              placeholder="CVE-2024-XXXXX" />
+          </div>
+        </div>
+
+        {/* Severity */}
+        <div>
+          <label className="block text-[10px] font-mono text-slate-500 mb-2 uppercase tracking-wider">Schweregrad</label>
+          <div className="flex gap-2">
+            {['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'].map(s => (
+              <button key={s} onClick={() => set('severity', s)}
+                className={`flex-1 py-1.5 rounded border text-[10px] font-mono font-bold transition-all ${form.severity === s ? sevColors[s] : 'border-[#1e293b] text-slate-600 hover:text-slate-400'}`}>
+                {s}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Status + Date */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-[10px] font-mono text-slate-500 mb-1 uppercase tracking-wider">Status</label>
+            <select value={form.status} onChange={e => set('status', e.target.value)}
+              className="w-full bg-[#1e293b] border border-[#334155] rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500/50 transition-colors">
+              {['Open', 'In Remediation', 'Closed'].map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-[10px] font-mono text-slate-500 mb-1 uppercase tracking-wider">Datum</label>
+            <input type="date" value={form.date} onChange={e => set('date', e.target.value)}
+              className="w-full bg-[#1e293b] border border-[#334155] rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500/50 transition-colors" />
+          </div>
+        </div>
+
+        {/* Description */}
+        <div>
+          <label className="block text-[10px] font-mono text-slate-500 mb-1 uppercase tracking-wider">Beschreibung</label>
+          <textarea value={form.description} onChange={e => set('description', e.target.value)} rows={3}
+            className="w-full bg-[#1e293b] border border-[#334155] rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500/50 transition-colors resize-none"
+            placeholder="Technische Beschreibung der Schwachstelle..." />
+        </div>
+
+        {/* Remediation */}
+        <div>
+          <label className="block text-[10px] font-mono text-slate-500 mb-1 uppercase tracking-wider">Remediation</label>
+          <textarea value={form.remediation} onChange={e => set('remediation', e.target.value)} rows={2}
+            className="w-full bg-[#1e293b] border border-[#334155] rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500/50 transition-colors resize-none"
+            placeholder="Empfohlene Gegenmaßnahme..." />
+        </div>
+
+        <div className="flex gap-2 pt-1">
+          <button onClick={onClose}
+            className="flex-1 py-2 rounded-lg border border-[#1e293b] text-xs font-mono text-slate-500 hover:text-slate-300 transition-colors">
+            Abbrechen
+          </button>
+          <button onClick={handleSubmit} disabled={!canSubmit}
+            className="flex-1 py-2 rounded-lg border border-red-500/40 bg-red-500/10 text-xs font-mono text-red-400 hover:bg-red-500/20 transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
+            {editFinding ? 'Speichern' : 'Finding erfassen'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function FindingsTracker({ currentUser, assignments, findings: allFindingsProp = FINDINGS, onAddFinding, onEditFinding, onDeleteFinding, clients: allClientsProp = CLIENTS, defaultSeverity = 'All', defaultStatus = 'All' }) {
+  const { findings: scopeFindings, clients: scopeClients } = getMyScope(currentUser, assignments, allClientsProp, ENGAGEMENTS, allFindingsProp)
+  const [severityFilter, setSeverityFilter] = useState(defaultSeverity)
+  const [statusFilter, setStatusFilter] = useState(defaultStatus)
+  const [clientFilter, setClientFilter] = useState('All')
+  const [search, setSearch] = useState('')
+  const [findings, setFindings] = useState(scopeFindings)
+  const [expandedId, setExpandedId] = useState(null)
+  const [noteInputId, setNoteInputId] = useState(null)
+  const [noteText, setNoteText] = useState('')
+  const [showNewModal, setShowNewModal] = useState(false)
+  const [editFinding, setEditFinding] = useState(null)
+
+  useEffect(() => { setFindings(scopeFindings) }, [allFindingsProp])
+
+  const filtered = findings.filter(f => {
+    const client = allClientsProp.find(c => c.id === f.clientId)
+    return (
+      (severityFilter === 'All' || f.severity === severityFilter) &&
+      (statusFilter === 'All' || f.status === statusFilter) &&
+      (clientFilter === 'All' || f.clientId === clientFilter) &&
+      (f.title.toLowerCase().includes(search.toLowerCase()) || (f.cve || '').includes(search))
+    )
+  })
+
+  const cycleStatus = (id) => {
+    const cycle = { 'Open': 'In Remediation', 'In Remediation': 'Closed', 'Closed': 'Open' }
+    setFindings(prev => prev.map(f => f.id === id ? { ...f, status: cycle[f.status] } : f))
+  }
+
+  return (
+    <div className="p-6 space-y-4">
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="relative">
+          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Search CVE / title..."
+            className="bg-[#0f172a] border border-[#1e293b] rounded px-3 py-2 pl-8 text-xs font-mono text-slate-200 placeholder-slate-600 focus:outline-none focus:border-cyan-500/50 w-52" />
+        </div>
+
+        <div className="flex items-center gap-1">
+          <Filter size={12} className="text-slate-600" />
+          {['All', 'CRITICAL', 'HIGH', 'MEDIUM', 'LOW'].map(s => (
+            <button key={s} onClick={() => setSeverityFilter(s)}
+              className={`px-2.5 py-1 rounded text-[10px] font-mono border transition-all ${severityFilter === s ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-400' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
+              {s}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-1">
+          {['All', 'Open', 'In Remediation', 'Closed'].map(s => (
+            <button key={s} onClick={() => setStatusFilter(s)}
+              className={`px-2.5 py-1 rounded text-[10px] font-mono border transition-all ${statusFilter === s ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-400' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
+              {s}
+            </button>
+          ))}
+        </div>
+
+        <select value={clientFilter} onChange={e => setClientFilter(e.target.value)}
+          className="bg-[#0f172a] border border-[#1e293b] rounded px-2 py-1.5 text-xs font-mono text-slate-400 focus:outline-none focus:border-cyan-500/50">
+          <option value="All">All Clients</option>
+          {scopeClients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+
+        <div className="ml-auto flex items-center gap-2">
+          <button className="flex items-center gap-2 px-3 py-1.5 bg-[#0f172a] border border-[#1e293b] rounded text-xs font-mono text-slate-500 hover:text-slate-300 hover:border-slate-600 transition-all">
+            <Download size={12} /> Export CSV
+          </button>
+          {(currentUser?.role === 'Admin' || currentUser?.role === 'Senior Pentester' || currentUser?.role === 'Pentester') && (
+            <button onClick={() => setShowNewModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-red-500/40 bg-red-500/10 text-xs font-mono text-red-400 hover:bg-red-500/20 transition-all">
+              <Plus size={12} /> Finding
+            </button>
+          )}
+        </div>
+      </div>
+
+      {showNewModal && (
+        <NewFindingModal
+          clients={scopeClients.length ? scopeClients : allClientsProp}
+          currentUser={currentUser}
+          onSave={f => { onAddFinding?.(f); setShowNewModal(false) }}
+          onClose={() => setShowNewModal(false)}
+        />
+      )}
+
+      {editFinding && (
+        <NewFindingModal
+          clients={allClientsProp}
+          currentUser={currentUser}
+          editFinding={editFinding}
+          onSave={f => { onEditFinding?.(f); setEditFinding(null) }}
+          onClose={() => setEditFinding(null)}
+        />
+      )}
+
+      <Panel>
+        <PanelHeader title="Vulnerability Database" subtitle={`${filtered.length} findings`} info="Alle erfassten Schwachstellen aus aktiven und abgeschlossenen Engagements. Zeigt CVSS-Score, Schweregrad, CVE-Referenz und aktuellen Behebungsstatus. Klicke auf einen Eintrag zum Aufklappen oder um den Status weiterzuschalten." />
+        <div className="divide-y divide-[#1e293b]">
+          {filtered.map(f => {
+            const client = allClientsProp.find(c => c.id === f.clientId)
+            const isExpanded = expandedId === f.id
+            return (
+              <div key={f.id} className="hover:bg-slate-800/20 transition-colors">
+                <div
+                  className="px-4 py-3 flex items-center gap-4 cursor-pointer"
+                  onClick={() => setExpandedId(isExpanded ? null : f.id)}
+                >
+                  <div className="w-20 shrink-0"><SeverityBadge severity={f.severity} /></div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-mono text-slate-200 font-medium truncate">{f.title}</div>
+                    <div className="text-[10px] font-mono text-slate-600">{client?.name} · {f.category} · {f.date}</div>
+                  </div>
+                  <div className="w-40 shrink-0"><CvssBar score={f.cvss} /></div>
+                  {f.cve
+                    ? <div className="w-32 shrink-0 text-[10px] font-mono text-cyan-400">{f.cve}</div>
+                    : <div className="w-32 shrink-0 text-[10px] font-mono text-slate-700">No CVE</div>
+                  }
+                  <div className="shrink-0"><StatusBadge status={f.status} /></div>
+                  <div className="shrink-0 flex items-center gap-1">
+                    {currentUser?.role !== 'Junior Pentester' && (
+                      <button
+                        onClick={e => { e.stopPropagation(); cycleStatus(f.id) }}
+                        className="px-2 py-1 rounded text-[10px] font-mono border border-[#1e293b] text-slate-500 hover:text-cyan-400 hover:border-cyan-500/40 transition-all"
+                      >
+                        Cycle
+                      </button>
+                    )}
+                    {(currentUser?.role === 'Admin' || currentUser?.role === 'Senior Pentester' || currentUser?.role === 'Pentester') && (
+                      <button
+                        onClick={e => { e.stopPropagation(); setEditFinding(f) }}
+                        className="p-1 rounded text-slate-700 hover:text-cyan-400 hover:bg-cyan-500/10 transition-all"
+                        title="Finding bearbeiten"
+                      >
+                        <Edit3 size={12} />
+                      </button>
+                    )}
+                    {currentUser?.role === 'Admin' && (
+                      <button
+                        onClick={e => { e.stopPropagation(); onDeleteFinding?.(f.id) }}
+                        className="p-1 rounded text-slate-700 hover:text-red-400 hover:bg-red-500/10 transition-all"
+                        title="Finding löschen"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    )}
+                    {isExpanded ? <ChevronUp size={13} className="text-slate-500" /> : <ChevronDown size={13} className="text-slate-500" />}
+                  </div>
+                </div>
+
+                {isExpanded && (
+                  <div className="px-4 pb-4 bg-slate-900/50 border-t border-[#1e293b]">
+                    <div className="grid grid-cols-2 gap-4 pt-3">
+                      <div>
+                        <p className="text-[10px] font-mono text-slate-600 uppercase mb-1">Description</p>
+                        <p className="text-xs font-mono text-slate-300 leading-relaxed">{f.description}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-mono text-slate-600 uppercase mb-1">Remediation</p>
+                        <p className="text-xs font-mono text-slate-300 leading-relaxed">{f.remediation}</p>
+                      </div>
+                    </div>
+                    <div className="mt-3">
+                      {noteInputId === f.id ? (
+                        <div className="flex gap-2">
+                          <input value={noteText} onChange={e => setNoteText(e.target.value)}
+                            placeholder="Add a note..."
+                            className="flex-1 bg-[#0f172a] border border-cyan-500/30 rounded px-3 py-1.5 text-xs font-mono text-slate-200 placeholder-slate-600 focus:outline-none" />
+                          <button onClick={() => { setNoteInputId(null); setNoteText('') }}
+                            className="px-3 py-1 rounded text-xs font-mono bg-cyan-500 text-black font-bold hover:bg-cyan-400 transition-colors">
+                            Save
+                          </button>
+                          <button onClick={() => setNoteInputId(null)}
+                            className="px-3 py-1 rounded text-xs font-mono border border-[#1e293b] text-slate-500 hover:text-slate-300 transition-colors">
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button onClick={() => setNoteInputId(f.id)}
+                          className="text-[10px] font-mono text-slate-600 hover:text-cyan-400 transition-colors flex items-center gap-1">
+                          <Plus size={10} /> Add note
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </Panel>
+    </div>
+  )
+}
+
+// ─── ENGAGEMENT PLANNER ──────────────────────────────────────────────────────
+
+const PHASE_COLORS = {
+  Recon:       { bg: 'bg-blue-500', text: 'text-blue-300', border: 'border-blue-500/30' },
+  Scanning:    { bg: 'bg-cyan-500', text: 'text-cyan-300', border: 'border-cyan-500/30' },
+  Exploitation:{ bg: 'bg-red-500', text: 'text-red-300', border: 'border-red-500/30' },
+  Reporting:   { bg: 'bg-green-500', text: 'text-green-300', border: 'border-green-500/30' },
+}
+
+const TYPE_COLORS = {
+  'Full Red Team': 'border-l-red-500 bg-red-500/5',
+  'Network':       'border-l-blue-500 bg-blue-500/5',
+  'Web':           'border-l-cyan-500 bg-cyan-500/5',
+  'Social Engineering': 'border-l-purple-500 bg-purple-500/5',
+}
+
+// ─── NEW ENGAGEMENT MODAL ─────────────────────────────────────────────────────
+
+function NewEngagementModal({ clients = CLIENTS, currentUser, onSave, onClose }) {
+  const [form, setForm] = useState({
+    title: '',
+    clientId: clients[0]?.id || '',
+    type: 'Web',
+    start: '',
+    end: '',
+    status: 'Planned',
+    phases: ['Recon'],
+    lead: currentUser?.name || '',
+  })
+
+  const togglePhase = (phase) => setForm(prev => ({
+    ...prev,
+    phases: prev.phases.includes(phase)
+      ? prev.phases.filter(p => p !== phase)
+      : [...prev.phases, phase],
+  }))
+
+  const canSubmit = form.title.trim() && form.clientId && form.start && form.end
+
+  const handleSubmit = () => {
+    if (!canSubmit) return
+    onSave({ id: `e_${Date.now()}`, ...form })
+    onClose()
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl p-6 w-full max-w-md space-y-4 shadow-2xl">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-mono font-semibold text-slate-100 flex items-center gap-2">
+            <Calendar size={14} className="text-cyan-400" /> Neues Engagement
+          </h3>
+          <button onClick={onClose} className="text-slate-500 hover:text-slate-300 transition-colors"><X size={16} /></button>
+        </div>
+
+        <div>
+          <label className="block text-[10px] font-mono text-slate-500 mb-1 uppercase tracking-wider">Titel</label>
+          <input value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))}
+            className="w-full bg-[#1e293b] border border-[#334155] rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500/50 transition-colors"
+            placeholder="Engagement-Titel..." />
+        </div>
+
+        <div>
+          <label className="block text-[10px] font-mono text-slate-500 mb-1 uppercase tracking-wider">Client</label>
+          <select value={form.clientId} onChange={e => setForm(p => ({ ...p, clientId: e.target.value }))}
+            className="w-full bg-[#1e293b] border border-[#334155] rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500/50 transition-colors">
+            {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-[10px] font-mono text-slate-500 mb-1 uppercase tracking-wider">Typ</label>
+            <select value={form.type} onChange={e => setForm(p => ({ ...p, type: e.target.value }))}
+              className="w-full bg-[#1e293b] border border-[#334155] rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500/50 transition-colors">
+              {['Web', 'Network', 'Social Engineering', 'Full Red Team'].map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-[10px] font-mono text-slate-500 mb-1 uppercase tracking-wider">Status</label>
+            <select value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value }))}
+              className="w-full bg-[#1e293b] border border-[#334155] rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500/50 transition-colors">
+              {['Planned', 'Active', 'On Hold'].map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-[10px] font-mono text-slate-500 mb-1 uppercase tracking-wider">Start</label>
+            <input type="date" value={form.start} onChange={e => setForm(p => ({ ...p, start: e.target.value }))}
+              className="w-full bg-[#1e293b] border border-[#334155] rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500/50 transition-colors" />
+          </div>
+          <div>
+            <label className="block text-[10px] font-mono text-slate-500 mb-1 uppercase tracking-wider">Ende</label>
+            <input type="date" value={form.end} onChange={e => setForm(p => ({ ...p, end: e.target.value }))}
+              className="w-full bg-[#1e293b] border border-[#334155] rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500/50 transition-colors" />
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-[10px] font-mono text-slate-500 mb-2 uppercase tracking-wider">Phasen</label>
+          <div className="flex gap-2 flex-wrap">
+            {['Recon', 'Scanning', 'Exploitation', 'Reporting'].map(phase => {
+              const active = form.phases.includes(phase)
+              const cfg = PHASE_COLORS[phase]
+              return (
+                <button key={phase} onClick={() => togglePhase(phase)}
+                  className={`px-2.5 py-1 rounded text-[10px] font-mono border transition-all ${active ? `${cfg.border} ${cfg.text} bg-slate-800` : 'border-[#1e293b] text-slate-600 hover:text-slate-400'}`}>
+                  {phase}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-[10px] font-mono text-slate-500 mb-1 uppercase tracking-wider">Lead</label>
+          <input value={form.lead} onChange={e => setForm(p => ({ ...p, lead: e.target.value }))}
+            className="w-full bg-[#1e293b] border border-[#334155] rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500/50 transition-colors"
+            placeholder="Lead Pentester..." />
+        </div>
+
+        <div className="flex gap-2 pt-1">
+          <button onClick={onClose}
+            className="flex-1 py-2 rounded-lg border border-[#1e293b] text-xs font-mono text-slate-500 hover:text-slate-300 transition-colors">
+            Abbrechen
+          </button>
+          <button onClick={handleSubmit} disabled={!canSubmit}
+            className="flex-1 py-2 rounded-lg border border-cyan-500/50 bg-cyan-500/10 text-xs font-mono text-cyan-400 hover:bg-cyan-500/20 transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
+            Erstellen
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, currentUser, groups = [], engagements: allEngProp = ENGAGEMENTS, onAddEngagement, clients: allClientsProp = CLIENTS, defaultStatus = 'All' }) {
+  const [view, setView] = useState('timeline')
+  const [selectedEng, setSelectedEng] = useState(null)
+  const [assignModal, setAssignModal] = useState(null)
+  const [statusFilter, setStatusFilter] = useState(defaultStatus)
+  const [myOnly, setMyOnly] = useState(false)
+  const [showNewModal, setShowNewModal] = useState(false)
+
+  const { engagements: scopeEngagements } = getMyScope(currentUser, assignments, allClientsProp, allEngProp)
+
+  const sorted = [...scopeEngagements]
+    .sort((a, b) => new Date(a.start) - new Date(b.start))
+    .filter(e => statusFilter === 'All' || e.status === statusFilter)
+    .filter(e => !myOnly || (assignments[e.id] || []).includes(currentUser?.id))
+
+  return (
+    <div className="p-6 space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex gap-1">
+          {['timeline', 'list'].map(v => (
+            <button key={v} onClick={() => setView(v)}
+              className={`px-3 py-1.5 rounded text-xs font-mono capitalize border transition-all ${view === v ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-400' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
+              {v}
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-1 flex-wrap">
+          <button onClick={() => setMyOnly(v => !v)}
+            className={`px-2.5 py-1 rounded text-[10px] font-mono border transition-all ${myOnly ? 'border-purple-500/50 bg-purple-500/10 text-purple-400' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
+            ★ Meine
+          </button>
+          {['All', 'Active', 'Planned', 'Completed', 'On Hold'].map(s => (
+            <button key={s} onClick={() => setStatusFilter(s)}
+              className={`px-2.5 py-1 rounded text-[10px] font-mono border transition-all ${statusFilter === s ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-400' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
+              {s}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="flex gap-3 text-xs font-mono">
+            {Object.entries(PHASE_COLORS).map(([phase, cfg]) => (
+              <div key={phase} className="flex items-center gap-1.5">
+                <div className={`w-2 h-2 rounded-full ${cfg.bg}`} />
+                <span className="text-slate-500">{phase}</span>
+              </div>
+            ))}
+          </div>
+          {currentUser?.role === 'Admin' && (
+            <button onClick={() => setShowNewModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-cyan-500/40 bg-cyan-500/10 text-xs font-mono text-cyan-400 hover:bg-cyan-500/20 transition-all">
+              <Plus size={12} /> Erstellen
+            </button>
+          )}
+        </div>
+      </div>
+
+      {showNewModal && (
+        <NewEngagementModal
+          clients={allClientsProp}
+          currentUser={currentUser}
+          onSave={eng => { onAddEngagement?.(eng); setShowNewModal(false) }}
+          onClose={() => setShowNewModal(false)}
+        />
+      )}
+
+      {view === 'timeline' && (
+        <Panel>
+          <PanelHeader title="Engagement Timeline" subtitle="Gantt-style view" info="Zeitliche Darstellung aller Engagements als Gantt-Diagramm. Zeigt Laufzeit und Status auf einen Blick — hilfreich für Ressourcenplanung und Terminüberschneidungen." />
+          <div className="p-4 space-y-2">
+            {sorted.map(eng => {
+              const client = allClientsProp.find(c => c.id === eng.clientId)
+              const borderColor = TYPE_COLORS[eng.type] || 'border-l-slate-500 bg-slate-500/5'
+              return (
+                <div
+                  key={eng.id}
+                  className={`border border-[#1e293b] border-l-2 rounded-lg p-3 cursor-pointer hover:border-slate-600 transition-all ${borderColor}`}
+                  onClick={() => setSelectedEng(selectedEng?.id === eng.id ? null : eng)}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs font-mono font-semibold text-slate-100">{eng.title}</span>
+                      <span className="text-[10px] font-mono text-slate-600">— {client?.name}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-mono text-slate-600">{eng.start} → {eng.end}</span>
+                      <StatusBadge status={eng.status} />
+                    </div>
+                  </div>
+
+                  {/* Phase Gantt bars */}
+                  <div className="grid grid-cols-4 gap-1 mt-1">
+                    {['Recon', 'Scanning', 'Exploitation', 'Reporting'].map((phase, i) => {
+                      const active = eng.phases.includes(phase)
+                      const cfg = PHASE_COLORS[phase]
+                      return (
+                        <div key={phase} className={`rounded p-1.5 border ${active ? cfg.border + ' bg-opacity-10' : 'border-transparent'}`}>
+                          <div className={`h-1.5 rounded-full mb-1 ${active ? cfg.bg : 'bg-slate-800'}`} />
+                          <span className={`text-[9px] font-mono ${active ? cfg.text : 'text-slate-700'}`}>{phase}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  <div className="flex items-center justify-between mt-2.5">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[9px] font-mono text-slate-600 uppercase tracking-wider">Team</span>
+                      <div className="flex -space-x-1.5">
+                        {(assignments[eng.id] || []).map(uid => {
+                          const m = teamMembers.find(t => t.id === uid)
+                          return m ? <div key={uid} className="ring-1 ring-[#0f172a] rounded-full"><MemberAvatar member={m} /></div> : null
+                        })}
+                        {!(assignments[eng.id] || []).length && <span className="text-[9px] font-mono text-slate-700">—</span>}
+                      </div>
+                      {groups.filter(g => g.engagementId === eng.id).map(g => {
+                        const gc = GROUP_COLORS[g.color] || GROUP_COLORS.cyan
+                        return (
+                          <span key={g.id} className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono border border-current/20 ${gc.text}`}>
+                            <Layers size={8} /> {g.name}
+                          </span>
+                        )
+                      })}
+                    </div>
+                    {currentUser?.role === 'Admin' && (
+                      <button
+                        onClick={e => { e.stopPropagation(); setAssignModal(eng) }}
+                        className="flex items-center gap-1 px-2 py-0.5 rounded border border-[#1e293b] text-[9px] font-mono text-slate-600 hover:text-cyan-400 hover:border-cyan-500/40 transition-all">
+                        <Users2 size={9} /> Zuweisen
+                      </button>
+                    )}
+                  </div>
+
+                  {selectedEng?.id === eng.id && (
+                    <div className="mt-3 pt-3 border-t border-[#1e293b] grid grid-cols-3 gap-3 text-xs font-mono">
+                      <div><span className="text-slate-600">Type</span><div className="text-slate-300">{eng.type}</div></div>
+                      <div><span className="text-slate-600">Lead</span><div className="text-slate-300">{eng.lead}</div></div>
+                      <div><span className="text-slate-600">Phases</span><div className="text-slate-300">{eng.phases.length}/4</div></div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </Panel>
+      )}
+
+      {assignModal && (
+        <AssignTeamModal
+          engagement={assignModal}
+          teamMembers={teamMembers}
+          assigned={assignments[assignModal.id] || []}
+          onSave={onAssign}
+          onClose={() => setAssignModal(null)}
+        />
+      )}
+
+      {view === 'list' && (
+        <Panel>
+          <PanelHeader title="All Engagements" subtitle={`${scopeEngagements.length} total`} info="Liste aller Pentest-Engagements mit Status, Zeitraum und zugewiesenen Operatoren. Über das Zuweisungs-Menü (→) können Mitarbeiter einem Engagement zugeteilt werden." />
+          <table className="w-full text-xs font-mono">
+            <thead>
+              <tr className="border-b border-[#1e293b]">
+                {['Engagement', 'Client', 'Type', 'Start', 'End', 'Status', 'Phases', 'Team'].map(h => (
+                  <th key={h} className="px-4 py-3 text-left text-[10px] text-slate-600 uppercase tracking-wider font-normal">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#1e293b]">
+              {scopeEngagements.map(eng => {
+                const client = allClientsProp.find(c => c.id === eng.clientId)
+                return (
+                  <tr key={eng.id} className="hover:bg-slate-800/30 transition-colors">
+                    <td className="px-4 py-3 text-slate-200 font-medium">{eng.title}</td>
+                    <td className="px-4 py-3 text-slate-400">{client?.name}</td>
+                    <td className="px-4 py-3 text-slate-400">{eng.type}</td>
+                    <td className="px-4 py-3 text-slate-500">{eng.start}</td>
+                    <td className="px-4 py-3 text-slate-500">{eng.end}</td>
+                    <td className="px-4 py-3"><StatusBadge status={eng.status} /></td>
+                    <td className="px-4 py-3">
+                      <div className="flex gap-1">
+                        {eng.phases.map(p => (
+                          <span key={p} className={`px-1 py-0.5 rounded text-[9px] font-mono ${PHASE_COLORS[p].text} bg-slate-800`}>{p.slice(0, 3)}</span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex -space-x-1.5">
+                        {(assignments[eng.id] || []).map(uid => {
+                          const m = teamMembers.find(t => t.id === uid)
+                          return m ? <div key={uid} className="ring-1 ring-[#0a0a0a] rounded-full"><MemberAvatar member={m} /></div> : null
+                        })}
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </Panel>
+      )}
+    </div>
+  )
+}
+
+// ─── CLIENT RADAR ────────────────────────────────────────────────────────────
+
+function ClientRadar({ onClientClick, currentUser, assignments, clients: allClients = CLIENTS }) {
+  const [radarFilter, setRadarFilter] = useState('All')
+  const { clients: scopeClients } = getMyScope(currentUser, assignments, allClients)
+
+  const activeCount   = scopeClients.filter(c => c.status === 'Active').length
+  const onHoldCount   = scopeClients.filter(c => c.status === 'On Hold').length
+  const criticalCount = scopeClients.filter(c => c.criticality === 'CRITICAL').length
+  const upcomingCount = scopeClients.filter(c => { const d = daysUntil(c.nextTest); return d >= 0 && d <= 30 }).length
+
+  const displayed = scopeClients.filter(c => {
+    if (radarFilter === 'active')   return c.status === 'Active'
+    if (radarFilter === 'onhold')   return c.status === 'On Hold'
+    if (radarFilter === 'critical') return c.criticality === 'CRITICAL'
+    if (radarFilter === 'upcoming') return daysUntil(c.nextTest) >= 0 && daysUntil(c.nextTest) <= 30
+    return true
+  })
+
+  return (
+    <div className="p-6 space-y-6">
+      <div className="grid grid-cols-4 gap-4">
+        <KpiCard label="Active Clients" value={activeCount} sub={`${scopeClients.length} gesamt`} icon={Activity}
+          accent={radarFilter === 'All'} active={radarFilter === 'active'}
+          info="Clients mit Status 'Active' — laufender Vertrag, Engagements werden aktuell durchgeführt oder sind aktiv geplant."
+          onClick={() => setRadarFilter(radarFilter === 'active' ? 'All' : 'active')} />
+        <KpiCard label="On Hold" value={onHoldCount} sub="Pausiert" icon={Pause}
+          active={radarFilter === 'onhold'}
+          info="Clients mit Status 'On Hold' — der Pentest-Prozess ist vorübergehend pausiert, z.B. wegen laufender Patches, Freeze-Phasen oder Kundenwunsch."
+          onClick={() => setRadarFilter(radarFilter === 'onhold' ? 'All' : 'onhold')} />
+        <KpiCard label="Kritisch" value={criticalCount} sub="Höchste Priorität" icon={AlertTriangle}
+          active={radarFilter === 'critical'}
+          info="Clients mit Kritikalitätsstufe 'CRITICAL' (CVSS ≥ 9.0 Findings offen oder sehr hohe Angriffsexponierung) — höchste Handlungspriorität."
+          onClick={() => setRadarFilter(radarFilter === 'critical' ? 'All' : 'critical')} />
+        <KpiCard label="Test ≤30d" value={upcomingCount} sub="Bald fällig" icon={Calendar}
+          active={radarFilter === 'upcoming'}
+          info="Clients, bei denen der nächste geplante Pentest in 30 Tagen oder weniger stattfindet — zur rechtzeitigen Vorbereitung und Ressourcenplanung."
+          onClick={() => setRadarFilter(radarFilter === 'upcoming' ? 'All' : 'upcoming')} />
+      </div>
+      <Panel>
+        <PanelHeader title="Client Radar" subtitle={`${displayed.length} von ${scopeClients.length} Clients`} />
+        <div className="p-4 grid grid-cols-3 gap-3">
+          {displayed.map(client => {
+            const ScopeIcon = SCOPE_ICONS[client.scopeType] || Globe
+            const days = daysUntil(client.nextTest)
+            return (
+              <button key={client.id} onClick={() => onClientClick(client.id)}
+                className="text-left p-4 bg-[#0a0a0a] border border-[#1e293b] rounded-lg hover:border-cyan-500/40 hover:bg-cyan-500/3 transition-all duration-200 group">
+                <div className="flex items-start justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <ScopeIcon size={13} className="text-slate-500 group-hover:text-cyan-400 transition-colors" />
+                    <span className="text-[10px] font-mono text-slate-600">{client.scopeType}</span>
+                  </div>
+                  <StatusBadge status={client.status} />
+                </div>
+                <h3 className="text-sm font-mono font-semibold text-slate-100 mb-0.5 truncate group-hover:text-cyan-300 transition-colors">{client.name}</h3>
+                <p className="text-[10px] font-mono text-slate-600 mb-3">{client.industry}</p>
+                <div className="flex items-center justify-between">
+                  <SeverityBadge severity={client.criticality} />
+                  <div className="text-right">
+                    <div className="text-[10px] font-mono text-slate-600">Nächster Test</div>
+                    <div className={`text-xs font-mono font-bold ${days <= 14 ? 'text-red-400' : days <= 30 ? 'text-yellow-400' : 'text-slate-400'}`}>
+                      {days <= 0 ? 'HEUTE' : `${days}d`}
+                    </div>
+                  </div>
+                </div>
+                {client.openFindings > 0 && (
+                  <div className="mt-2 flex items-center gap-1">
+                    <AlertTriangle size={10} className="text-red-400" />
+                    <span className="text-[10px] font-mono text-red-400">{client.openFindings} offene Findings</span>
+                  </div>
+                )}
+              </button>
+            )
+          })}
+          {displayed.length === 0 && (
+            <div className="col-span-3 py-10 text-center text-xs font-mono text-slate-600">
+              Keine Clients entsprechen dem aktiven Filter.
+            </div>
+          )}
+        </div>
+      </Panel>
+    </div>
+  )
+}
+
+// ─── REPORTING CENTER ────────────────────────────────────────────────────────
+
+function NewReportModal({ onAdd, onClose }) {
+  const today = new Date().toISOString().split('T')[0]
+  const [form, setForm] = useState({
+    title: '', clientId: CLIENTS[0]?.id || '', type: 'Technical Report',
+    date: today, status: 'Draft', engagementId: '',
+  })
+  const inputCls = "w-full bg-[#0a0a0a] border border-[#1e293b] rounded px-3 py-2 text-xs font-mono text-slate-200 placeholder-slate-700 focus:outline-none focus:border-cyan-500/50 transition-colors"
+  const selectCls = "w-full bg-[#0a0a0a] border border-[#1e293b] rounded px-3 py-2 text-xs font-mono text-slate-400 focus:outline-none focus:border-cyan-500/50 transition-colors"
+
+  const handleSubmit = (e) => {
+    e.preventDefault()
+    onAdd({ id: `r${Date.now()}`, ...form, engagementId: form.engagementId || undefined })
+    onClose()
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-6" onClick={onClose}>
+      <div className="bg-[#0f172a] border border-[#1e293b] rounded-2xl w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-6 py-5 border-b border-[#1e293b]">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-cyan-500/10 border border-cyan-500/20 rounded-lg">
+              <FileText size={14} className="text-cyan-400" />
+            </div>
+            <div>
+              <h2 className="text-sm font-mono font-bold text-slate-100">Neuen Report anlegen</h2>
+              <p className="text-[10px] font-mono text-slate-600 mt-0.5">Dokument im Report-Registry erstellen</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded text-slate-500 hover:text-slate-200 hover:bg-slate-800 transition-all">
+            <X size={14} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <div>
+            <label className="text-[10px] font-mono text-slate-600 uppercase tracking-wider block mb-1.5">Titel *</label>
+            <input required value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+              placeholder="z.B. Red Team Report Q3/2026" className={inputCls} />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[10px] font-mono text-slate-600 uppercase tracking-wider block mb-1.5">Client *</label>
+              <select required value={form.clientId} onChange={e => setForm(f => ({ ...f, clientId: e.target.value }))} className={selectCls}>
+                {CLIENTS.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] font-mono text-slate-600 uppercase tracking-wider block mb-1.5">Typ *</label>
+              <select required value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))} className={selectCls}>
+                <option>Technical Report</option>
+                <option>Executive Summary</option>
+                <option>Remediation Plan</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[10px] font-mono text-slate-600 uppercase tracking-wider block mb-1.5">Datum *</label>
+              <input required type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
+                className={selectCls} />
+            </div>
+            <div>
+              <label className="text-[10px] font-mono text-slate-600 uppercase tracking-wider block mb-1.5">Status</label>
+              <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))} className={selectCls}>
+                <option>Draft</option>
+                <option>Delivered</option>
+                <option>Final</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-[10px] font-mono text-slate-600 uppercase tracking-wider block mb-1.5">Engagement (optional)</label>
+            <select value={form.engagementId} onChange={e => setForm(f => ({ ...f, engagementId: e.target.value }))} className={selectCls}>
+              <option value="">— kein Engagement —</option>
+              {ENGAGEMENTS.map(e => {
+                const c = CLIENTS.find(cl => cl.id === e.clientId)
+                return <option key={e.id} value={e.id}>{e.title} · {c?.name}</option>
+              })}
+            </select>
+          </div>
+
+          <div className="flex gap-2 pt-2">
+            <button type="submit"
+              className="flex-1 py-2.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 active:bg-cyan-600 text-black font-mono font-bold text-xs tracking-widest transition-all flex items-center justify-center gap-2">
+              <Plus size={13} /> Report anlegen
+            </button>
+            <button type="button" onClick={onClose}
+              className="flex-1 py-2.5 rounded-lg border border-[#1e293b] text-slate-500 font-mono text-xs hover:text-slate-300 hover:border-slate-600 transition-all">
+              Abbrechen
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+const REPORT_TYPE_ICONS = {
+  'Technical Report':   FileText,
+  'Executive Summary':  TrendingUp,
+  'Remediation Plan':   CheckCircle2,
+}
+
+function ReportModal({ report, client, onClose }) {
+  return (
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-6" onClick={onClose}>
+      <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl w-full max-w-2xl max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[#1e293b]">
+          <div>
+            <h2 className="text-sm font-mono font-bold text-slate-100">{report.title}</h2>
+            <p className="text-xs font-mono text-slate-500 mt-0.5">{client?.name} · {report.date}</p>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded text-slate-500 hover:text-slate-200 hover:bg-slate-800 transition-all">
+            <X size={15} />
+          </button>
+        </div>
+        <div className="p-6 space-y-5 text-xs font-mono">
+          <div className="border border-[#1e293b] rounded-lg p-4">
+            <div className="text-[10px] text-slate-600 uppercase tracking-widest mb-2">Document Header</div>
+            <div className="space-y-1 text-slate-400">
+              <div className="flex justify-between"><span className="text-slate-600">Classification:</span> <span className="text-red-400 font-bold">CONFIDENTIAL</span></div>
+              <div className="flex justify-between"><span className="text-slate-600">Client:</span> <span>{client?.name}</span></div>
+              <div className="flex justify-between"><span className="text-slate-600">Author:</span> <span>Leif Balthasar // HolySec</span></div>
+              <div className="flex justify-between"><span className="text-slate-600">Date:</span> <span>{report.date}</span></div>
+              <div className="flex justify-between"><span className="text-slate-600">Version:</span> <span>1.0 — {report.status}</span></div>
+            </div>
+          </div>
+
+          {report.type === 'Executive Summary' && (
+            <>
+              <div>
+                <div className="text-[10px] text-slate-600 uppercase tracking-widest mb-2">Executive Summary</div>
+                <div className="text-slate-400 leading-relaxed">HolySec conducted a comprehensive security assessment of {client?.name}'s infrastructure. The engagement revealed several critical vulnerabilities that require immediate attention. Overall security posture is assessed as <span className="text-red-400">HIGH RISK</span>.</div>
+              </div>
+              <div>
+                <div className="text-[10px] text-slate-600 uppercase tracking-widest mb-2">Key Findings</div>
+                <div className="space-y-1 text-slate-500">
+                  <div>• Critical: 2 findings requiring immediate remediation</div>
+                  <div>• High: 3 findings with significant business impact</div>
+                  <div>• Recommended immediate actions outlined in Technical Report</div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {report.type === 'Technical Report' && (
+            <>
+              <div>
+                <div className="text-[10px] text-slate-600 uppercase tracking-widest mb-2">Scope & Methodology</div>
+                <div className="text-slate-400 leading-relaxed">Black-box assessment following PTES and OWASP Testing Guide v4.2. Phases: Reconnaissance, Scanning, Exploitation, Post-Exploitation, Reporting.</div>
+              </div>
+              <div>
+                <div className="text-[10px] text-slate-600 uppercase tracking-widest mb-2">Findings Summary</div>
+                <div className="bg-[#0a0a0a] rounded p-3 space-y-1 text-slate-500">
+                  {['CRITICAL — 2', 'HIGH — 3', 'MEDIUM — 2', 'LOW — 1'].map(l => <div key={l}>• {l}</div>)}
+                </div>
+              </div>
+            </>
+          )}
+
+          {report.type === 'Remediation Plan' && (
+            <>
+              <div>
+                <div className="text-[10px] text-slate-600 uppercase tracking-widest mb-2">Remediation Roadmap</div>
+                <div className="space-y-2 text-slate-400">
+                  <div className="flex items-start gap-2"><CheckCircle2 size={12} className="text-green-400 mt-0.5 shrink-0" /><span>Phase 1 (0–30 days): Critical findings patched</span></div>
+                  <div className="flex items-start gap-2"><Clock size={12} className="text-yellow-400 mt-0.5 shrink-0" /><span>Phase 2 (30–90 days): High findings addressed</span></div>
+                  <div className="flex items-start gap-2"><AlertTriangle size={12} className="text-orange-400 mt-0.5 shrink-0" /><span>Phase 3 (90–180 days): Medium/Low findings + hardening</span></div>
+                </div>
+              </div>
+            </>
+          )}
+
+          <div className="border-t border-[#1e293b] pt-4 text-slate-700 text-[10px] leading-relaxed">
+            This document is confidential and intended solely for {client?.name}. Unauthorized distribution is prohibited. HolySec — Blessed by Offense, Built for Defense.
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ReportingCenter({ reports, onStatusChange, onAdd, currentUser, assignments, onAuditLog }) {
+  const [selectedReport, setSelectedReport] = useState(null)
+  const [filterClient, setFilterClient] = useState('All')
+  const [filterType, setFilterType] = useState('All')
+  const [showNewReport, setShowNewReport] = useState(false)
+
+  const { engagements: scopeEngagements } = getMyScope(currentUser, assignments)
+  const scopeEngIds = new Set(scopeEngagements.map(e => e.id))
+  const scopeReports = currentUser?.role === 'Admin'
+    ? reports
+    : reports.filter(r => !r.engagementId || scopeEngIds.has(r.engagementId))
+
+  const clientsWithReports = CLIENTS.filter(c => scopeReports.some(r => r.clientId === c.id))
+  const filtered = scopeReports.filter(r =>
+    (filterClient === 'All' || r.clientId === filterClient) &&
+    (filterType === 'All' || r.type === filterType)
+  )
+
+  return (
+    <div className="p-6 space-y-4">
+      <div className="flex items-center gap-3 flex-wrap">
+        <select value={filterClient} onChange={e => setFilterClient(e.target.value)}
+          className="bg-[#0f172a] border border-[#1e293b] rounded px-2 py-1.5 text-xs font-mono text-slate-400 focus:outline-none focus:border-cyan-500/50">
+          <option value="All">All Clients</option>
+          {clientsWithReports.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+        <div className="flex gap-1 flex-wrap">
+          {['All', 'Technical Report', 'Executive Summary', 'Remediation Plan'].map(t => (
+            <button key={t} onClick={() => setFilterType(t)}
+              className={`px-2.5 py-1 rounded text-[10px] font-mono border transition-all ${filterType === t ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-400' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
+              {t}
+            </button>
+          ))}
+        </div>
+        {currentUser?.role !== 'Junior Pentester' && (
+          <button onClick={() => setShowNewReport(true)}
+            className="ml-auto flex items-center gap-2 px-3 py-1.5 bg-cyan-500/10 border border-cyan-500/30 rounded text-xs font-mono text-cyan-400 hover:bg-cyan-500/20 transition-all">
+            <Plus size={12} /> New Report
+          </button>
+        )}
+      </div>
+
+      <div className="grid grid-cols-3 gap-3 mb-2">
+        {['Technical Report', 'Executive Summary', 'Remediation Plan'].map(type => {
+          const Icon = REPORT_TYPE_ICONS[type]
+          const count = scopeReports.filter(r => r.type === type).length
+          return (
+            <Panel key={type}
+              className={`p-4 flex items-center gap-3 cursor-pointer transition-all ${filterType === type ? 'border-cyan-500/40 bg-cyan-500/5' : 'hover:border-slate-600'}`}
+              onClick={() => setFilterType(filterType === type ? 'All' : type)}>
+              <div className="p-2 bg-slate-800 rounded">
+                <Icon size={14} className={filterType === type ? 'text-cyan-400' : 'text-slate-400'} />
+              </div>
+              <div>
+                <div className="text-xs font-mono text-slate-400">{type}</div>
+                <div className="text-lg font-mono font-bold text-slate-100">{count}</div>
+              </div>
+            </Panel>
+          )
+        })}
+      </div>
+
+      <Panel>
+        <PanelHeader title="Report Registry" subtitle={`${filtered.length} documents`} info="Alle erstellten Reports nach Client und Engagement. Typen: Technical Report (detaillierter Befundbericht), Executive Summary (Kurzfassung für Management), Remediation Plan (Maßnahmenplan). Status per Klick weiterschalten: Draft → Delivered → Final." />
+        <div className="divide-y divide-[#1e293b]">
+          {filtered.map(rep => {
+            const client = CLIENTS.find(c => c.id === rep.clientId)
+            const Icon = REPORT_TYPE_ICONS[rep.type] || FileText
+            return (
+              <div key={rep.id} className="px-4 py-4 flex items-center justify-between hover:bg-slate-800/20 transition-colors group">
+                <div className="flex items-center gap-4">
+                  <div className="p-2 bg-slate-800 rounded">
+                    <Icon size={13} className="text-slate-400" />
+                  </div>
+                  <div>
+                    <div className="text-sm font-mono text-slate-100 group-hover:text-cyan-300 transition-colors">{rep.title}</div>
+                    <div className="text-xs font-mono text-slate-600 mt-0.5">{client?.name} · {rep.date}</div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-mono text-slate-500 bg-slate-800 px-2 py-0.5 rounded">{rep.type}</span>
+                  <button onClick={() => onStatusChange(rep.id)} title="Status wechseln (Open → Draft → Delivered)"
+                    className="cursor-pointer hover:opacity-80 transition-opacity">
+                    <StatusBadge status={rep.status} />
+                  </button>
+                  <button
+                    onClick={() => setSelectedReport(rep)}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 border border-[#1e293b] rounded text-xs font-mono text-slate-500 hover:text-cyan-400 hover:border-cyan-500/40 transition-all"
+                  >
+                    <Eye size={11} /> Preview
+                  </button>
+                  <button
+                    onClick={() => { generateReportPDF(rep, client); onAuditLog?.(`Report PDF: "${rep.title}"`) }}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 border border-[#1e293b] rounded text-xs font-mono text-slate-500 hover:text-green-400 hover:border-green-500/40 transition-all"
+                  >
+                    <Download size={11} /> PDF
+                  </button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </Panel>
+
+      {selectedReport && (
+        <ReportModal
+          report={selectedReport}
+          client={CLIENTS.find(c => c.id === selectedReport.clientId)}
+          onClose={() => setSelectedReport(null)}
+        />
+      )}
+
+      {showNewReport && (
+        <NewReportModal onAdd={onAdd} onClose={() => setShowNewReport(false)} />
+      )}
+    </div>
+  )
+}
+
+// ─── ABOUT HOLYSEC ───────────────────────────────────────────────────────────
+
+function AboutHolySec() {
+  return (
+    <div className="p-6 max-w-4xl space-y-6">
+      {/* Hero */}
+      <Panel className="p-8 relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 via-transparent to-transparent pointer-events-none" />
+        <div className="relative">
+          <div className="flex items-center gap-4 mb-4">
+            <div className="p-3 bg-cyan-500/10 border border-cyan-500/30 rounded-xl">
+              <Crown size={28} className="text-cyan-400" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-mono font-bold text-slate-100 tracking-wider">
+                HOLY<span className="text-cyan-400">SEC</span>
+              </h1>
+              <p className="text-sm font-mono text-slate-500 italic">Blessed by Offense, Built for Defense.</p>
+            </div>
+          </div>
+          <p className="text-sm font-mono text-slate-400 leading-relaxed max-w-2xl">
+            HolySec ist eine Elite-Boutique für offensive Sicherheitsleistungen. Wir operieren nach dem Prinzip: wer angreift wie ein Feind, versteht wie ein Feind — und verteidigt wie kein anderer.
+          </p>
+        </div>
+      </Panel>
+
+      {/* Drei Heiligen Könige — Die Erklärung */}
+      <div className="grid grid-cols-3 gap-4">
+        <Panel className="p-6 border-t-2 border-t-cyan-400">
+          <div className="flex items-center gap-2 mb-3">
+            <Star size={16} className="text-cyan-400" />
+            <span className="text-xs font-mono font-bold text-cyan-400 uppercase tracking-widest">Holy</span>
+          </div>
+          <h3 className="text-lg font-mono font-bold text-slate-100 mb-2">Heilig</h3>
+          <p className="text-xs font-mono text-slate-400 leading-relaxed">
+            Die Heiligen Drei Könige folgten einem Stern ins Unbekannte — geleitet von <span className="text-cyan-300">Weisheit</span>, nicht von Zufall. HolySec folgt demselben Prinzip: Jeder Pentest ist eine gezielte Pilgerreise durch feindliche Infrastruktur. Was heilig ist, ist präzise, integer und unbestechlich.
+          </p>
+          <div className="mt-4 pt-4 border-t border-[#1e293b]">
+            <div className="text-[10px] font-mono text-slate-600 uppercase tracking-widest mb-1">Unser Versprechen</div>
+            <div className="text-xs font-mono text-cyan-400">Integrität über allem.</div>
+          </div>
+        </Panel>
+
+        <Panel className="p-6 border-t-2 border-t-yellow-400">
+          <div className="flex items-center gap-2 mb-3">
+            <Crown size={16} className="text-yellow-400" />
+            <span className="text-xs font-mono font-bold text-yellow-400 uppercase tracking-widest">Balthasar</span>
+          </div>
+          <h3 className="text-lg font-mono font-bold text-slate-100 mb-2">Der König</h3>
+          <p className="text-xs font-mono text-slate-400 leading-relaxed">
+            Balthasar — einer der Drei Weisen — brachte <span className="text-yellow-300">Myrrhe</span>: ein Konservierungsmittel, ein Symbol für Schutz und Erhalt. Leif Balthasar trägt diesen Namen nicht zufällig. Wie der König aus dem Morgenland bringt er seinen Kunden das Wertvollste: <span className="text-yellow-300">Schutz vor dem Unsichtbaren</span>.
+          </p>
+          <div className="mt-4 pt-4 border-t border-[#1e293b]">
+            <div className="text-[10px] font-mono text-slate-600 uppercase tracking-widest mb-1">Das Geschenk</div>
+            <div className="text-xs font-mono text-yellow-400">Myrrhe — Schutz, der konserviert.</div>
+          </div>
+        </Panel>
+
+        <Panel className="p-6 border-t-2 border-t-red-400">
+          <div className="flex items-center gap-2 mb-3">
+            <Sword size={16} className="text-red-400" />
+            <span className="text-xs font-mono font-bold text-red-400 uppercase tracking-widest">Offense</span>
+          </div>
+          <h3 className="text-lg font-mono font-bold text-slate-100 mb-2">Der Angriff</h3>
+          <p className="text-xs font-mono text-slate-400 leading-relaxed">
+            Die Drei Könige reisten durch feindliches Territorium — unerkannt, strategisch, mit klarem Ziel. Genau so operiert HolySec: <span className="text-red-300">Recon vor dem Angriff</span>, Exploitation mit Präzision, Reporting mit Klarheit. Gesegnet durch Offense — denn nur wer angreift, versteht wie man schützt.
+          </p>
+          <div className="mt-4 pt-4 border-t border-[#1e293b]">
+            <div className="text-[10px] font-mono text-slate-600 uppercase tracking-widest mb-1">Die Methode</div>
+            <div className="text-xs font-mono text-red-400">Seek. Strike. Secure.</div>
+          </div>
+        </Panel>
+      </div>
+
+      {/* Drei Wörter */}
+      <Panel className="p-6">
+        <div className="text-center mb-6">
+          <div className="text-[10px] font-mono text-slate-600 uppercase tracking-widest mb-2">Die drei Wörter hinter HolySec</div>
+          <p className="text-sm font-mono text-slate-400">Was die Heiligen Drei Könige mitbrachten — was wir liefern.</p>
+        </div>
+        <div className="grid grid-cols-3 gap-4 text-center">
+          {[
+            { word: 'GOLD', sub: 'Aurum', desc: 'Wert ohne Kompromiss. Jeder Report, jede Zeile Code, jeder Befund hat Substanz — kein Füllwerk, kein Boilerplate.', color: 'text-yellow-400', border: 'border-yellow-400/30', bg: 'bg-yellow-400/5', icon: Star },
+            { word: 'WEIHRAUCH', sub: 'Incensum', desc: 'Klarheit durch Rauch. Wir durchdringen Nebel und Verschleierung — in Netzwerken, in Code, in Prozessen. Wir bringen Licht ins Dunkel.', color: 'text-cyan-400', border: 'border-cyan-400/30', bg: 'bg-cyan-400/5', icon: Eye },
+            { word: 'MYRRHE', sub: 'Myrrha', desc: 'Konservierung und Schutz. Myrrhe bewahrt — so wie wir Systeme, Daten und Reputationen vor dem Verfall durch Angreifer bewahren.', color: 'text-purple-400', border: 'border-purple-400/30', bg: 'bg-purple-400/5', icon: Shield },
+          ].map(({ word, sub, desc, color, border, bg, icon: Icon }) => (
+            <div key={word} className={`p-5 rounded-lg border ${border} ${bg}`}>
+              <Icon size={20} className={`${color} mx-auto mb-3`} />
+              <div className={`text-xl font-mono font-black ${color} mb-0.5`}>{word}</div>
+              <div className={`text-[10px] font-mono italic mb-3 ${color} opacity-70`}>{sub}</div>
+              <p className="text-xs font-mono text-slate-400 leading-relaxed">{desc}</p>
+            </div>
+          ))}
+        </div>
+      </Panel>
+
+      {/* Leif's Profile */}
+      <Panel className="p-6">
+        <div className="flex items-start gap-6">
+          <div className="p-4 bg-[#0a0a0a] border border-[#1e293b] rounded-lg">
+            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-cyan-500 to-cyan-700 flex items-center justify-center">
+              <span className="text-xl font-mono font-black text-black">LB</span>
+            </div>
+          </div>
+          <div className="flex-1">
+            <h2 className="text-lg font-mono font-bold text-slate-100">Leif Balthasar</h2>
+            <p className="text-sm font-mono text-cyan-400 mb-3">Founder & Senior Penetration Tester — HolySec</p>
+            <p className="text-xs font-mono text-slate-400 leading-relaxed mb-4">
+              Spezialist für offensive Sicherheit mit Fokus auf Red Team Operations, Cloud-Security und OT/ICS-Assessments. Methodisch verankert in PTES, OWASP und MITRE ATT&CK — pragmatisch in der Ausführung.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {['Red Team', 'Web App Pentesting', 'Cloud Security', 'OT/ICS', 'Social Engineering', 'OSCP', 'CRTO', 'AWS Security'].map(tag => (
+                <span key={tag} className="text-[10px] font-mono text-slate-500 bg-slate-800 border border-[#1e293b] rounded px-2 py-0.5">{tag}</span>
+              ))}
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="text-[10px] font-mono text-slate-600 mb-1">Contact</div>
+            <div className="text-xs font-mono text-cyan-400">leif@holysec.de</div>
+          </div>
+        </div>
+      </Panel>
+    </div>
+  )
+}
+
+// ─── SETTINGS ────────────────────────────────────────────────────────────────
+
+function UserManagementSection({ members, currentUser, onAdd, onRemove, onEdit }) {
+  const [search, setSearch]           = useState('')
+  const [sortBy, setSortBy]           = useState('name')
+  const [filterRole, setFilterRole]   = useState('All')
+  const [showAdd, setShowAdd]         = useState(false)
+  const [editMember, setEditMember]   = useState(null)
+  const [deleteConfirm, setDeleteConfirm] = useState(null)
+
+  const displayed = [...members]
+    .filter(m =>
+      (filterRole === 'All' || m.role === filterRole) &&
+      (search === '' || m.name.toLowerCase().includes(search.toLowerCase()) || m.email.toLowerCase().includes(search.toLowerCase()))
+    )
+    .sort((a, b) => {
+      if (sortBy === 'name')  return a.name.localeCompare(b.name)
+      if (sortBy === 'role')  return a.role.localeCompare(b.role)
+      if (sortBy === 'email') return a.email.localeCompare(b.email)
+      return 0
+    })
+
+  return (
+    <div className="space-y-4">
+      <Panel>
+        <PanelHeader title="Benutzerverwaltung" subtitle={`${members.length} Benutzer im System`}>
+          <button onClick={() => setShowAdd(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-500/10 border border-cyan-500/30 rounded text-xs font-mono text-cyan-400 hover:bg-cyan-500/20 transition-all">
+            <UserPlus size={12} /> Benutzer anlegen
+          </button>
+        </PanelHeader>
+
+        <div className="flex items-center gap-3 px-5 py-3 border-b border-[#1e293b] flex-wrap">
+          <div className="relative">
+            <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Name oder E-Mail..."
+              className="bg-[#0a0a0a] border border-[#1e293b] rounded px-3 py-1.5 pl-8 text-xs font-mono text-slate-200 placeholder-slate-600 focus:outline-none focus:border-cyan-500/50 w-52" />
+          </div>
+          <div className="flex gap-1 flex-wrap">
+            {['All', 'Admin', 'Senior Pentester', 'Pentester', 'Junior Pentester'].map(r => (
+              <button key={r} onClick={() => setFilterRole(r)}
+                className={`px-2 py-1 rounded text-[10px] font-mono border transition-all ${filterRole === r ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-400' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
+                {r === 'All' ? 'Alle' : r}
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-1 ml-auto items-center">
+            <span className="text-[10px] font-mono text-slate-600 mr-1">Sortieren:</span>
+            {[['name', 'Name'], ['role', 'Rolle'], ['email', 'E-Mail']].map(([k, label]) => (
+              <button key={k} onClick={() => setSortBy(k)}
+                className={`px-2 py-1 rounded text-[10px] font-mono border transition-all ${sortBy === k ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-400' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <table className="w-full text-xs font-mono">
+          <thead>
+            <tr className="border-b border-[#1e293b]">
+              {['Benutzer', 'Rolle', 'E-Mail', 'Status', ''].map(h => (
+                <th key={h} className="px-4 py-3 text-left text-[10px] text-slate-600 uppercase tracking-wider font-normal">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-[#1e293b]">
+            {displayed.map(member => {
+              const isSelf = member.id === currentUser?.id
+              const roleCls = ROLE_BADGE[member.role] || ROLE_BADGE['Pentester']
+              return (
+                <tr key={member.id} className="hover:bg-slate-800/20 transition-colors">
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <MemberAvatar member={member} size="md" />
+                      <div>
+                        <div className="font-semibold text-slate-200 flex items-center gap-1.5">
+                          {member.name}
+                          {isSelf && <span className="text-[9px] text-cyan-400 bg-cyan-400/10 border border-cyan-400/20 rounded px-1">YOU</span>}
+                        </div>
+                        <div className="text-[10px] text-slate-600 mt-0.5">{member.title}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded border text-[10px] font-mono font-medium ${roleCls}`}>
+                      {member.role}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-slate-500">{member.email}</td>
+                  <td className="px-4 py-3">
+                    <span className="text-[10px] font-mono text-green-400 bg-green-400/10 border border-green-400/20 rounded px-2 py-0.5">
+                      {member.status || 'Active'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-1 justify-end">
+                      <button onClick={() => setEditMember(member)} title="Bearbeiten"
+                        className="p-1.5 rounded text-slate-600 hover:text-cyan-400 hover:bg-cyan-400/10 transition-all">
+                        <Edit3 size={12} />
+                      </button>
+                      {!isSelf && (
+                        <button onClick={() => setDeleteConfirm(member)} title="Löschen"
+                          className="p-1.5 rounded text-slate-600 hover:text-red-400 hover:bg-red-400/10 transition-all">
+                          <Trash2 size={12} />
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </Panel>
+
+      {showAdd && <AddEditMemberModal onAdd={onAdd} onClose={() => setShowAdd(false)} />}
+      {editMember && <AddEditMemberModal member={editMember} onEdit={onEdit} onClose={() => setEditMember(null)} />}
+
+      {deleteConfirm && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-6" onClick={() => setDeleteConfirm(null)}>
+          <div className="bg-[#0f172a] border border-red-500/20 rounded-2xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 bg-red-500/10 border border-red-500/20 rounded-lg"><Trash2 size={14} className="text-red-400" /></div>
+              <div>
+                <h2 className="text-sm font-mono font-bold text-slate-100">Benutzer löschen</h2>
+                <p className="text-[10px] font-mono text-slate-600 mt-0.5">Nicht rückgängig zu machen</p>
+              </div>
+            </div>
+            <p className="text-xs font-mono text-slate-400 mb-5 leading-relaxed">
+              <span className="text-slate-200 font-semibold">{deleteConfirm.name}</span> ({deleteConfirm.role}) wird dauerhaft aus dem System entfernt.
+            </p>
+            <div className="flex gap-2">
+              <button onClick={() => { onRemove(deleteConfirm.id); setDeleteConfirm(null) }}
+                className="flex-1 py-2 rounded-lg bg-red-500 hover:bg-red-400 text-white font-mono font-bold text-xs transition-all">
+                Endgültig löschen
+              </button>
+              <button onClick={() => setDeleteConfirm(null)}
+                className="flex-1 py-2 rounded-lg border border-[#1e293b] text-slate-500 font-mono text-xs hover:text-slate-300 transition-all">
+                Abbrechen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── TIME TRACKING SECTION ───────────────────────────────────────────────────
+
+function TimeTrackingSection({ entries, currentUser, members }) {
+  const isAdmin = currentUser?.role === 'Admin'
+  const [userFilter, setUserFilter] = useState('all')
+  const [range, setRange] = useState('week')
+
+  const now = new Date()
+  const startOfWeek = new Date(now); startOfWeek.setDate(now.getDate() - now.getDay() + 1); startOfWeek.setHours(0,0,0,0)
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+  const rangeStart = range === 'week' ? startOfWeek : startOfMonth
+
+  const visible = entries.filter(e => {
+    const d = new Date(e.date)
+    const matchRange = d >= rangeStart
+    const matchUser = isAdmin ? (userFilter === 'all' || e.userId === userFilter) : e.userId === currentUser.id
+    return matchRange && matchUser
+  })
+
+  const totalSecs = visible.reduce((s, e) => s + e.duration, 0)
+  const todayStr = now.toISOString().split('T')[0]
+  const todaySecs = visible.filter(e => e.date === todayStr).reduce((s, e) => s + e.duration, 0)
+
+  const byUser = members.map(m => ({
+    ...m,
+    secs: visible.filter(e => e.userId === m.id).reduce((s, e) => s + e.duration, 0),
+    count: visible.filter(e => e.userId === m.id).length,
+  })).filter(m => m.secs > 0)
+
+  return (
+    <div className="space-y-5">
+      {/* KPIs */}
+      <div className="grid grid-cols-3 gap-4">
+        <KpiCard label="Heute" value={formatDurationShort(todaySecs) || '—'} sub="Erfasste Zeit" icon={Clock} accent />
+        <KpiCard label={range === 'week' ? 'Diese Woche' : 'Dieser Monat'} value={formatDurationShort(totalSecs) || '—'} sub={`${visible.length} Einträge`} icon={Timer} />
+        <KpiCard label="Ø pro Tag" value={range === 'week' ? formatDurationShort(Math.floor(totalSecs / 5)) || '—' : formatDurationShort(Math.floor(totalSecs / now.getDate())) || '—'} sub="Durchschnitt" icon={TrendingUp} />
+      </div>
+
+      {/* Controls */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          {['week','month'].map(r => (
+            <button key={r} onClick={() => setRange(r)}
+              className={`px-3 py-1.5 rounded text-xs font-mono border transition-all ${range === r ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-400' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
+              {r === 'week' ? 'Diese Woche' : 'Dieser Monat'}
+            </button>
+          ))}
+        </div>
+        {isAdmin && (
+          <select value={userFilter} onChange={e => setUserFilter(e.target.value)}
+            className="bg-[#0a0a0a] border border-[#1e293b] rounded px-3 py-1.5 text-xs font-mono text-slate-400 focus:outline-none focus:border-cyan-500/50">
+            <option value="all">Alle Mitarbeiter</option>
+            {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+          </select>
+        )}
+      </div>
+
+      {/* Per-user summary (admin only) */}
+      {isAdmin && byUser.length > 0 && (
+        <Panel>
+          <PanelHeader title="Übersicht nach Mitarbeiter" />
+          <div className="divide-y divide-[#1e293b]">
+            {byUser.map(m => {
+              const pct = Math.min(Math.round((m.secs / (range === 'week' ? 40 * 3600 : 160 * 3600)) * 100), 100)
+              return (
+                <div key={m.id} className="px-5 py-3 flex items-center gap-4">
+                  <MemberAvatar member={m} size="sm" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-mono text-slate-200">{m.name}</span>
+                      <span className="text-xs font-mono text-slate-400 tabular-nums">{formatDurationShort(m.secs)}</span>
+                    </div>
+                    <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                      <div className="h-full bg-cyan-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-mono text-slate-600 w-12 text-right">{m.count} Eintr.</span>
+                </div>
+              )
+            })}
+          </div>
+        </Panel>
+      )}
+
+      {/* Entries table */}
+      <Panel>
+        <PanelHeader title="Zeiteinträge" subtitle={`${visible.length} Einträge`} />
+        {visible.length === 0 ? (
+          <div className="py-10 text-center text-xs font-mono text-slate-600">
+            Noch keine Einträge für diesen Zeitraum.
+          </div>
+        ) : (
+          <table className="w-full text-xs font-mono">
+            <thead>
+              <tr className="border-b border-[#1e293b]">
+                {[...(isAdmin ? ['Mitarbeiter'] : []), 'Datum', 'Beginn', 'Ende', 'Dauer'].map(h => (
+                  <th key={h} className="px-4 py-3 text-left text-[10px] text-slate-600 uppercase tracking-wider font-normal">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#1e293b]">
+              {[...visible].reverse().map(e => (
+                <tr key={e.id} className="hover:bg-slate-800/20 transition-colors">
+                  {isAdmin && (
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        {(() => { const m = members.find(m => m.id === e.userId); return m ? <MemberAvatar member={m} size="sm" /> : null })()}
+                        <span className="text-slate-300">{e.userName}</span>
+                      </div>
+                    </td>
+                  )}
+                  <td className="px-4 py-3 text-slate-400">{e.date}</td>
+                  <td className="px-4 py-3 text-slate-300 tabular-nums">{e.start}</td>
+                  <td className="px-4 py-3 text-slate-300 tabular-nums">{e.end}</td>
+                  <td className="px-4 py-3">
+                    <span className="text-cyan-400 font-semibold tabular-nums">{formatDuration(e.duration)}</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Panel>
+    </div>
+  )
+}
+
+function SettingsPage({ members, currentUser, onAdd, onRemove, onEdit, timeEntries, darkMode, onToggleDark }) {
+  const isAdmin = currentUser?.role === 'Admin'
+  const [tab, setTab]             = useState(isAdmin ? 'users' : 'general')
+  const [apiKey, setApiKey]       = useState('sk-holysec-••••••••••••••••')
+  const [notifications, setNotifications] = useState(true)
+  const [nickname, setNickname]   = useState(currentUser?.nickname || '')
+  const [nickSaved, setNickSaved] = useState(false)
+
+  const tabs = [
+    ...(isAdmin ? [{ id: 'users',   label: 'Benutzerverwaltung', icon: Users2 }] : []),
+    { id: 'general',  label: 'Allgemein',     icon: Settings },
+    { id: 'time',     label: 'Zeiterfassung', icon: ClipboardList },
+    ...(isAdmin ? [
+      { id: 'api',     label: 'API & Integrationen', icon: Zap },
+      { id: 'billing', label: 'Lizenz & System',     icon: Star },
+    ] : []),
+  ]
+
+  return (
+    <div className="p-6 max-w-5xl space-y-5">
+      <div className="flex gap-1 border-b border-[#1e293b]">
+        {tabs.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)}
+            className={`flex items-center gap-2 px-4 py-2.5 text-xs font-mono border-b-2 transition-all ${tab === t.id ? 'border-cyan-400 text-cyan-400' : 'border-transparent text-slate-500 hover:text-slate-300'}`}>
+            <t.icon size={12} /> {t.label}
+          </button>
+        ))}
+        {!isAdmin && (
+          <div className="ml-auto flex items-center gap-1.5 text-[10px] font-mono text-slate-600 pb-2 pr-1">
+            <Lock size={10} /> Erweiterte Einstellungen nur für Admins
+          </div>
+        )}
+      </div>
+
+      {tab === 'users' && isAdmin && (
+        <UserManagementSection members={members} currentUser={currentUser} onAdd={onAdd} onRemove={onRemove} onEdit={onEdit} />
+      )}
+
+      {tab === 'general' && (
+        <Panel>
+          <PanelHeader title="Allgemeine Einstellungen" />
+          <div className="p-5 space-y-5">
+            {[
+              { label: 'Anzeigename', sub: isAdmin ? 'Vollständiger Name (nur Admin kann ändern)' : 'Vollständiger Name — nur Admin kann ändern', defaultValue: currentUser?.name || '', editable: isAdmin },
+              { label: 'Unternehmen', sub: 'Firmenname für Kundendokumente', defaultValue: 'HolySec', editable: isAdmin },
+              { label: 'E-Mail Adresse', sub: 'Kontaktadresse für Reports', defaultValue: currentUser?.email || '', editable: isAdmin },
+            ].map(({ label, sub, defaultValue, editable }) => (
+              <div key={label} className="flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-mono text-slate-200">{label}</div>
+                  <div className="text-[10px] font-mono text-slate-600">{sub}</div>
+                </div>
+                {editable
+                  ? <input defaultValue={defaultValue}
+                      className="bg-[#0a0a0a] border border-[#1e293b] rounded px-3 py-1.5 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500/50 w-52" />
+                  : <span className="text-xs font-mono text-slate-400 bg-[#0a0a0a] border border-[#1e293b] rounded px-3 py-1.5 w-52 truncate select-none">{defaultValue}</span>
+                }
+              </div>
+            ))}
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-xs font-mono text-slate-200">Nickname <span className="text-slate-700">(optional)</span></div>
+                <div className="text-[10px] font-mono text-slate-600">Wird im Team-Bereich und in Chats angezeigt</div>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  value={nickname}
+                  onChange={e => setNickname(e.target.value)}
+                  placeholder="z.B. CyberLeif"
+                  className="bg-[#0a0a0a] border border-[#1e293b] rounded px-3 py-1.5 text-xs font-mono text-slate-200 placeholder-slate-700 focus:outline-none focus:border-cyan-500/50 w-44"
+                />
+                <button
+                  onClick={() => { onEdit({ ...currentUser, nickname }); setNickSaved(true); setTimeout(() => setNickSaved(false), 2000) }}
+                  disabled={nickSaved}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 border rounded text-xs font-mono transition-all ${nickSaved ? 'bg-green-500/15 border-green-500/40 text-green-400 cursor-default' : 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/20'}`}>
+                  {nickSaved ? <><CheckCircle2 size={11} /> Gespeichert</> : 'Speichern'}
+                </button>
+              </div>
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-xs font-mono text-slate-200">E-Mail Benachrichtigungen</div>
+                <div className="text-[10px] font-mono text-slate-600">Alerts für bevorstehende Engagements</div>
+              </div>
+              <button onClick={() => setNotifications(v => !v)}
+                className={`relative w-10 h-5 rounded-full border transition-all ${notifications ? 'bg-cyan-500 border-cyan-500' : 'bg-slate-800 border-[#1e293b]'}`}>
+                <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${notifications ? 'left-5' : 'left-0.5'}`} />
+              </button>
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-xs font-mono text-slate-200">Erscheinungsbild</div>
+                <div className="text-[10px] font-mono text-slate-600">Dark Mode / Light Mode</div>
+              </div>
+              <button onClick={onToggleDark}
+                className={`relative w-10 h-5 rounded-full border transition-all ${darkMode ? 'bg-cyan-500 border-cyan-500' : 'bg-slate-800 border-[#1e293b]'}`}>
+                <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${darkMode ? 'left-5' : 'left-0.5'}`} />
+              </button>
+            </div>
+          </div>
+        </Panel>
+      )}
+
+      {tab === 'time' && (
+        <TimeTrackingSection entries={timeEntries} currentUser={currentUser} members={members} />
+      )}
+
+      {tab === 'api' && isAdmin && (
+        <div className="space-y-4">
+          <Panel>
+            <PanelHeader title="API & Integrationen" subtitle="Nur für Administratoren sichtbar" />
+            <div className="p-5 space-y-4">
+              <div>
+                <div className="text-[10px] font-mono text-slate-600 uppercase tracking-wider mb-2">Report API Key</div>
+                <div className="flex gap-2">
+                  <input value={apiKey} onChange={e => setApiKey(e.target.value)}
+                    className="flex-1 bg-[#0a0a0a] border border-[#1e293b] rounded px-3 py-1.5 text-xs font-mono text-slate-400 focus:outline-none focus:border-cyan-500/50" />
+                  <button className="px-3 py-1.5 border border-[#1e293b] rounded text-xs font-mono text-slate-500 hover:text-slate-300 transition-colors">Regenerieren</button>
+                </div>
+              </div>
+              <div>
+                <div className="text-[10px] font-mono text-slate-600 uppercase tracking-wider mb-2">Integrationen</div>
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    { name: 'Jira', status: 'Nicht verbunden', ok: false },
+                    { name: 'Slack', status: 'Nicht verbunden', ok: false },
+                    { name: 'CVE Datenbank', status: 'Verbunden', ok: true },
+                    { name: 'MITRE ATT&CK', status: 'Verbunden', ok: true },
+                  ].map(int => (
+                    <div key={int.name} className="flex items-center justify-between p-3 bg-[#0a0a0a] border border-[#1e293b] rounded-lg">
+                      <span className="text-xs font-mono text-slate-300">{int.name}</span>
+                      <span className={`text-[10px] font-mono ${int.ok ? 'text-green-400' : 'text-slate-600'}`}>{int.status}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </Panel>
+        </div>
+      )}
+
+      {tab === 'billing' && isAdmin && (
+        <Panel>
+          <PanelHeader title="Lizenz & System" subtitle="Nur für Administratoren sichtbar" />
+          <div className="p-5 space-y-5">
+            <div className="flex items-center justify-between p-4 bg-cyan-500/5 border border-cyan-500/20 rounded-xl">
+              <div>
+                <div className="text-sm font-mono font-bold text-cyan-400">HolySec Pro</div>
+                <div className="text-[10px] font-mono text-slate-500 mt-0.5">Unbegrenzte Clients & Reports · Alle Features freigeschaltet</div>
+              </div>
+              <span className="text-[10px] font-mono text-green-400 bg-green-400/10 border border-green-400/20 rounded px-2 py-1 font-bold">AKTIV</span>
+            </div>
+            <div className="space-y-3 text-xs font-mono">
+              {[
+                ['Lizenzinhaber', 'Leif Balthasar'],
+                ['Lizenz-ID', 'HS-PRO-2026-LB'],
+                ['Gültig bis', '31.12.2027'],
+                ['Benutzer-Slots', `${members.length} / unbegrenzt`],
+                ['Version', 'v1.0.0 // HolySec Ops Platform'],
+              ].map(([label, value]) => (
+                <div key={label} className="flex justify-between items-center py-2 border-b border-[#1e293b]">
+                  <span className="text-slate-500">{label}</span>
+                  <span className="text-slate-300">{value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </Panel>
+      )}
+    </div>
+  )
+}
+
+// ─── TEAM MANAGEMENT ─────────────────────────────────────────────────────────
+
+function AddEditMemberModal({ member = null, onAdd, onEdit, onClose }) {
+  const isEdit = !!member
+  const inputCls = "w-full bg-[#0a0a0a] border border-[#1e293b] rounded px-3 py-2 text-xs font-mono text-slate-200 placeholder-slate-700 focus:outline-none focus:border-cyan-500/50"
+  const [form, setForm] = useState({
+    name:     member?.name || '',
+    email:    member?.email || '',
+    password: '',
+    role:     member?.role || 'Pentester',
+    title:    member?.title || '',
+    skills:   member?.skills?.join(', ') || '',
+    color:    member?.color || MEMBER_COLORS_LIST[Math.floor(Math.random() * MEMBER_COLORS_LIST.length)],
+  })
+
+  const handleSubmit = (e) => {
+    e.preventDefault()
+    if (!isEdit && !form.password.trim()) return
+    const parts = form.name.trim().split(' ')
+    const initials = (parts.length >= 2 ? parts[0][0] + parts[parts.length - 1][0] : form.name.slice(0, 2)).toUpperCase()
+    const data = {
+      ...(isEdit ? member : { id: `u${Date.now()}`, status: 'Active' }),
+      name:     form.name.trim(),
+      email:    form.email.trim(),
+      password: form.password.trim() || undefined,
+      role:     form.role,
+      title:    form.title.trim() || form.role,
+      skills:   form.skills.split(',').map(s => s.trim()).filter(Boolean),
+      initials,
+      color:    form.color,
+    }
+    isEdit ? onEdit(data) : onAdd(data)
+    onClose()
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-6" onClick={onClose}>
+      <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[#1e293b]">
+          <h2 className="text-sm font-mono font-bold text-slate-100">{isEdit ? 'Mitarbeiter bearbeiten' : 'Mitarbeiter hinzufügen'}</h2>
+          <button onClick={onClose} className="p-1.5 rounded text-slate-500 hover:text-slate-200 hover:bg-slate-800 transition-all"><X size={14} /></button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-6 space-y-3">
+          <div>
+            <label className="text-[10px] font-mono text-slate-600 uppercase tracking-wider block mb-1">Vollständiger Name *</label>
+            <input required value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+              placeholder="Max Mustermann" className={inputCls} />
+          </div>
+          <div>
+            <label className="text-[10px] font-mono text-slate-600 uppercase tracking-wider block mb-1">E-Mail *</label>
+            <input required type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+              placeholder="user@holysec.de" className={inputCls} />
+          </div>
+          <div>
+            <label className="text-[10px] font-mono text-slate-600 uppercase tracking-wider block mb-1">
+              Passwort {isEdit ? <span className="text-slate-700 normal-case">(leer = unverändert)</span> : <span className="text-red-400">*</span>}
+            </label>
+            <input type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+              placeholder={isEdit ? '••••••••' : 'Initiales Passwort setzen'} required={!isEdit} className={inputCls} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[10px] font-mono text-slate-600 uppercase tracking-wider block mb-1">Rolle</label>
+              <select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))} className={inputCls}>
+                <option>Junior Pentester</option>
+                <option>Pentester</option>
+                <option>Senior Pentester</option>
+                <option>Admin</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] font-mono text-slate-600 uppercase tracking-wider block mb-1">Jobtitel</label>
+              <input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+                placeholder="Web Analyst" className={inputCls} />
+            </div>
+          </div>
+          <div>
+            <label className="text-[10px] font-mono text-slate-600 uppercase tracking-wider block mb-1">Skills (kommagetrennt)</label>
+            <input value={form.skills} onChange={e => setForm(f => ({ ...f, skills: e.target.value }))}
+              placeholder="Web, Network, Cloud" className={inputCls} />
+          </div>
+          <div>
+            <label className="text-[10px] font-mono text-slate-600 uppercase tracking-wider block mb-1.5">Farbe</label>
+            <div className="flex gap-2">
+              {MEMBER_COLORS_LIST.map(c => {
+                const cfg = MEMBER_COLOR_MAP[c]
+                return (
+                  <button key={c} type="button" onClick={() => setForm(f => ({ ...f, color: c }))}
+                    className={`w-6 h-6 rounded-full ${cfg.bg} transition-all ${form.color === c ? 'ring-2 ring-offset-1 ring-offset-[#0f172a] ring-white' : 'opacity-50 hover:opacity-80'}`} />
+                )
+              })}
+            </div>
+          </div>
+          <div className="flex gap-2 pt-1">
+            <button type="submit"
+              className="flex-1 py-2 rounded bg-cyan-500 hover:bg-cyan-400 text-black font-mono font-bold text-xs tracking-wider transition-all">
+              {isEdit ? 'Speichern' : 'Hinzufügen'}
+            </button>
+            <button type="button" onClick={onClose}
+              className="flex-1 py-2 rounded border border-[#1e293b] text-slate-500 font-mono text-xs hover:text-slate-300 transition-all">
+              Abbrechen
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+function AssignTeamModal({ engagement, teamMembers, assigned, onSave, onClose }) {
+  const [selected, setSelected] = useState(new Set(assigned))
+  const client = CLIENTS.find(c => c.id === engagement.clientId)
+
+  const toggle = (id) => setSelected(prev => {
+    const next = new Set(prev)
+    next.has(id) ? next.delete(id) : next.add(id)
+    return next
+  })
+
+  return (
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-6" onClick={onClose}>
+      <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[#1e293b]">
+          <div>
+            <h2 className="text-sm font-mono font-bold text-slate-100">Team zuweisen</h2>
+            <p className="text-[10px] font-mono text-slate-600 mt-0.5 max-w-[240px] truncate">{engagement.title} — {client?.name}</p>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded text-slate-500 hover:text-slate-200 hover:bg-slate-800 transition-all"><X size={14} /></button>
+        </div>
+        <div className="p-4 space-y-2 max-h-72 overflow-y-auto">
+          {teamMembers.filter(m => m.status === 'Active').map(member => {
+            const isSel = selected.has(member.id)
+            return (
+              <button key={member.id} onClick={() => toggle(member.id)}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-all ${isSel ? 'border-cyan-500/40 bg-cyan-500/8' : 'border-[#1e293b] hover:border-slate-600'}`}>
+                <MemberAvatar member={member} />
+                <div className="flex-1 text-left">
+                  <div className="text-xs font-mono text-slate-200">{member.name}</div>
+                  <div className="text-[10px] font-mono text-slate-600">{member.role}</div>
+                </div>
+                <div className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-all ${isSel ? 'bg-cyan-500 border-cyan-500' : 'border-slate-600'}`}>
+                  {isSel && <CheckCircle2 size={10} className="text-black" />}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+        <div className="px-4 pb-4 flex gap-2">
+          <button onClick={() => { onSave(engagement.id, [...selected]); onClose() }}
+            className="flex-1 py-2 rounded bg-cyan-500 hover:bg-cyan-400 text-black font-mono font-bold text-xs tracking-wider transition-all">
+            Speichern
+          </button>
+          <button onClick={onClose}
+            className="flex-1 py-2 rounded border border-[#1e293b] text-slate-500 font-mono text-xs hover:text-slate-300 transition-all">
+            Abbrechen
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const ROLE_BADGE = {
+  'Admin':            'text-cyan-400 bg-cyan-400/10 border-cyan-400/20',
+  'Senior Pentester': 'text-orange-400 bg-orange-400/10 border-orange-400/20',
+  'Pentester':        'text-purple-400 bg-purple-400/10 border-purple-400/20',
+  'Junior Pentester': 'text-blue-400 bg-blue-400/10 border-blue-400/20',
+}
+
+function TeamPage({ members, currentUser, onAdd, onRemove, assignments, engagements, userPresence = 'online', timeEntries = [], onAuditLog }) {
+  const [showAdd, setShowAdd] = useState(false)
+  const [roleFilter, setRoleFilter] = useState('All')
+  const [timeDetailMember, setTimeDetailMember] = useState(null)
+  const isAdmin = currentUser?.role === 'Admin'
+
+  const memberEngCount = (id) => engagements.filter(e => (assignments[e.id] || []).includes(id) && e.status !== 'Completed').length
+
+  const displayedMembers = roleFilter === 'All' ? members : members.filter(m => m.role === roleFilter)
+
+  return (
+    <div className="p-6 space-y-5">
+      <div className="grid grid-cols-5 gap-3">
+        <KpiCard label="Team Size" value={members.length} sub={`${members.filter(m => m.status === 'Active').length} aktiv`}
+          icon={Users2} accent={roleFilter === 'All'} active={false}
+          onClick={() => setRoleFilter('All')} />
+        {['Admin', 'Senior Pentester', 'Pentester', 'Junior Pentester'].map(role => (
+          <KpiCard key={role} label={role} value={members.filter(m => m.role === role).length} sub="Mitarbeiter"
+            icon={Shield} active={roleFilter === role}
+            onClick={() => setRoleFilter(roleFilter === role ? 'All' : role)} />
+        ))}
+      </div>
+
+      <Panel>
+        <PanelHeader title="Operator Directory" subtitle={`${displayedMembers.length} von ${members.length} Mitarbeitern`}>
+          <div className="flex items-center gap-1 mr-1">
+            {['All', 'Admin', 'Senior Pentester', 'Pentester', 'Junior Pentester'].map(r => (
+              <button key={r} onClick={() => setRoleFilter(r)}
+                className={`px-2.5 py-1 rounded text-[10px] font-mono border transition-all ${roleFilter === r ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-400' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
+                {r}
+              </button>
+            ))}
+          </div>
+          {isAdmin && (
+            <button onClick={() => setShowAdd(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-500/10 border border-cyan-500/30 rounded text-xs font-mono text-cyan-400 hover:bg-cyan-500/20 transition-all">
+              <UserPlus size={12} /> Hinzufügen
+            </button>
+          )}
+        </PanelHeader>
+
+        <div className="p-4 grid grid-cols-3 gap-3">
+          {displayedMembers.map(member => {
+            const isSelf = member.id === currentUser?.id
+            const activeEngs = memberEngCount(member.id)
+            const roleCls = ROLE_BADGE[member.role] || ROLE_BADGE['Pentester']
+            return (
+              <div key={member.id} className={`bg-[#0a0a0a] rounded-lg p-4 border transition-all ${isSelf ? 'border-cyan-500/30 bg-cyan-500/3' : 'border-[#1e293b]'}`}>
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="relative">
+                      <MemberAvatar member={member} size="lg" />
+                      {(() => {
+                        const dotColor = isSelf ? (userPresence === 'away' ? 'bg-yellow-400' : 'bg-green-400') : 'bg-slate-600'
+                        return (
+                          <div className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#0a0a0a] ${dotColor}`}>
+                            {isSelf && userPresence !== 'away' && <div className={`absolute inset-0 rounded-full ${dotColor} animate-ping opacity-60`} />}
+                          </div>
+                        )
+                      })()}
+                    </div>
+                    <div>
+                      <div className="text-sm font-mono font-semibold text-slate-100 flex items-center gap-1.5">
+                        {member.nickname ? member.nickname : member.name}
+                        {member.nickname && <span className="text-[9px] font-mono text-slate-600">({member.name})</span>}
+                        {isSelf && <span className="text-[9px] font-mono text-cyan-400 bg-cyan-400/10 border border-cyan-400/20 rounded px-1 py-0.5">YOU</span>}
+                      </div>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <div className={`w-1.5 h-1.5 rounded-full ${isSelf ? (userPresence === 'away' ? 'bg-yellow-400' : 'bg-green-400') : 'bg-slate-600'}`} />
+                        <span className={`text-[9px] font-mono ${isSelf ? (userPresence === 'away' ? 'text-yellow-400' : 'text-green-400') : 'text-slate-600'}`}>{isSelf ? (userPresence === 'away' ? 'ABWESEND' : 'ONLINE') : 'OFFLINE'}</span>
+                        <span className="text-[9px] font-mono text-slate-700">·</span>
+                        <span className="text-[9px] font-mono text-slate-600">{member.title}</span>
+                      </div>
+                    </div>
+                  </div>
+                  {isAdmin && (
+                    <div className="flex gap-1">
+                      <button onClick={() => setTimeDetailMember(member)}
+                        className="p-1 rounded text-slate-700 hover:text-cyan-400 hover:bg-cyan-500/10 transition-all" title="Zeiterfassung anzeigen">
+                        <Timer size={12} />
+                      </button>
+                      {!isSelf && (
+                        <button onClick={() => onRemove(member.id)}
+                          className="p-1 rounded text-slate-700 hover:text-red-400 hover:bg-red-400/10 transition-all" title="Entfernen">
+                          <Trash2 size={12} />
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <span className={`inline-flex items-center px-2 py-0.5 rounded border text-[10px] font-mono font-medium mb-3 mt-1 ${roleCls}`}>
+                  {member.role}
+                </span>
+
+                <div className="flex flex-wrap gap-1 mb-3">
+                  {member.skills.map(skill => (
+                    <span key={skill} className="text-[9px] font-mono text-slate-600 bg-slate-800/80 border border-[#1e293b] rounded px-1.5 py-0.5">{skill}</span>
+                  ))}
+                </div>
+
+                <div className="flex items-center justify-between pt-3 border-t border-[#1e293b]">
+                  <div className="text-[10px] font-mono text-slate-600">
+                    <span className="text-slate-300 font-semibold">{activeEngs}</span> aktive Einsätze
+                  </div>
+                  <a href={`mailto:${member.email}`} onClick={e => e.stopPropagation()}
+                    className="text-[10px] font-mono text-slate-700 hover:text-cyan-400 truncate max-w-[120px] transition-colors" title={member.email}>
+                    {member.email}
+                  </a>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </Panel>
+
+      {showAdd && <AddEditMemberModal onAdd={onAdd} onClose={() => setShowAdd(false)} />}
+      {timeDetailMember && (
+        <MemberTimeDetailModal member={timeDetailMember} timeEntries={timeEntries} onClose={() => setTimeDetailMember(null)} onExport={onAuditLog} />
+      )}
+    </div>
+  )
+}
+
+// ─── MEMBER TIME DETAIL MODAL ────────────────────────────────────────────────
+
+function MemberTimeDetailModal({ member, timeEntries, onClose, onExport }) {
+  const entries = timeEntries.filter(e => e.userId === member.id)
+  const totalSecs = entries.reduce((s, e) => s + e.duration, 0)
+
+  const now = new Date()
+  const startOfWeek = new Date(now); startOfWeek.setDate(now.getDate() - now.getDay() + 1); startOfWeek.setHours(0,0,0,0)
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+  const weekSecs  = entries.filter(e => new Date(e.date) >= startOfWeek).reduce((s, e) => s + e.duration, 0)
+  const monthSecs = entries.filter(e => new Date(e.date) >= startOfMonth).reduce((s, e) => s + e.duration, 0)
+
+  const exportPDF = () => {
+    const doc = new jsPDF()
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(16)
+    doc.text('HolySec — Zeiterfassung', 14, 18)
+    doc.setFontSize(11)
+    doc.setFont('helvetica', 'normal')
+    doc.text(`Mitarbeiter: ${member.name}${member.nickname ? ' (' + member.nickname + ')' : ''}`, 14, 28)
+    doc.text(`Rolle: ${member.role}`, 14, 35)
+    doc.text(`Export: ${new Date().toLocaleDateString('de-DE')}`, 14, 42)
+    doc.setDrawColor(30, 41, 59)
+    doc.line(14, 47, 196, 47)
+
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(10)
+    doc.text('Zusammenfassung', 14, 55)
+    doc.setFont('helvetica', 'normal')
+    doc.text(`Gesamt:        ${formatDuration(totalSecs)}`, 14, 62)
+    doc.text(`Diese Woche:   ${formatDuration(weekSecs)}`, 14, 69)
+    doc.text(`Dieser Monat:  ${formatDuration(monthSecs)}`, 14, 76)
+
+    doc.line(14, 81, 196, 81)
+    doc.setFont('helvetica', 'bold')
+    doc.text('Einträge', 14, 89)
+    const headers = ['Datum', 'Beginn', 'Ende', 'Dauer (hh:mm:ss)']
+    const colX = [14, 55, 85, 120]
+    headers.forEach((h, i) => doc.text(h, colX[i], 97))
+    doc.line(14, 100, 196, 100)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9)
+    let y = 107
+    ;[...entries].reverse().forEach(e => {
+      if (y > 270) { doc.addPage(); y = 20 }
+      doc.text(e.date, colX[0], y)
+      doc.text(e.start, colX[1], y)
+      doc.text(e.end || '—', colX[2], y)
+      doc.text(formatDuration(e.duration), colX[3], y)
+      y += 7
+    })
+    onExport?.(`Zeiterfassung: ${member.name}`)
+    doc.save(`holysec_zeit_${member.name.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`)
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-6" onClick={onClose}>
+      <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl w-full max-w-2xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[#1e293b]">
+          <div className="flex items-center gap-3">
+            <MemberAvatar member={member} size="lg" />
+            <div>
+              <div className="text-sm font-mono font-bold text-slate-100">{member.nickname || member.name}</div>
+              <div className="text-[10px] font-mono text-slate-600">{member.role} · {member.email}</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={exportPDF}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-500/10 border border-cyan-500/30 rounded text-xs font-mono text-cyan-400 hover:bg-cyan-500/20 transition-all">
+              <Download size={12} /> PDF exportieren
+            </button>
+            <button onClick={onClose} className="p-1.5 rounded text-slate-500 hover:text-slate-200"><X size={14} /></button>
+          </div>
+        </div>
+
+        {/* KPIs */}
+        <div className="grid grid-cols-3 gap-4 p-5 border-b border-[#1e293b]">
+          {[
+            { label: 'Gesamt', value: formatDuration(totalSecs), sub: `${entries.length} Einträge` },
+            { label: 'Diese Woche', value: formatDuration(weekSecs), sub: 'Mo–So' },
+            { label: 'Dieser Monat', value: formatDuration(monthSecs), sub: new Date().toLocaleString('de-DE', { month: 'long' }) },
+          ].map(k => (
+            <div key={k.label} className="text-center p-3 bg-[#0a0a0a] border border-[#1e293b] rounded-lg">
+              <div className="text-[10px] font-mono text-slate-600 uppercase tracking-widest mb-1">{k.label}</div>
+              <div className="text-lg font-mono font-bold text-cyan-400 tabular-nums">{k.value}</div>
+              <div className="text-[10px] font-mono text-slate-600 mt-0.5">{k.sub}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Entries */}
+        <div className="max-h-80 overflow-y-auto">
+          {entries.length === 0 ? (
+            <div className="py-10 text-center text-xs font-mono text-slate-600">Keine Zeiteinträge vorhanden.</div>
+          ) : (
+            <table className="w-full text-xs font-mono">
+              <thead className="sticky top-0 bg-[#0f172a]">
+                <tr className="border-b border-[#1e293b]">
+                  {['Datum', 'Beginn', 'Ende', 'Dauer'].map(h => (
+                    <th key={h} className="px-5 py-3 text-left text-[10px] text-slate-600 uppercase tracking-wider font-normal">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#1e293b]">
+                {[...entries].reverse().map(e => (
+                  <tr key={e.id} className="hover:bg-slate-800/20 transition-colors">
+                    <td className="px-5 py-3 text-slate-400">{e.date}</td>
+                    <td className="px-5 py-3 text-slate-300 tabular-nums">{e.start}</td>
+                    <td className="px-5 py-3 text-slate-300 tabular-nums">{e.end || '—'}</td>
+                    <td className="px-5 py-3 text-cyan-400 font-semibold tabular-nums">{formatDuration(e.duration)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── ENGAGEMENT GROUPS ───────────────────────────────────────────────────────
+
+function GroupModal({ group, teamMembers, engagements = ENGAGEMENTS, onSave, onClose }) {
+  const [name, setName]               = useState(group?.name || '')
+  const [description, setDescription] = useState(group?.description || '')
+  const [memberIds, setMemberIds]     = useState(group?.memberIds || [])
+  const [engagementId, setEngId]      = useState(group?.engagementId || '')
+  const [color, setColor]             = useState(group?.color || 'cyan')
+
+  const toggle = (id) => setMemberIds(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id])
+
+  return (
+    <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-6" onClick={onClose}>
+      <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl w-full max-w-md p-6 shadow-2xl space-y-4" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-mono font-bold text-slate-100">{group ? 'Gruppe bearbeiten' : 'Neue Gruppe'}</h3>
+          <button onClick={onClose} className="p-1 rounded text-slate-500 hover:text-slate-200"><X size={14} /></button>
+        </div>
+
+        <div>
+          <label className="text-[10px] font-mono text-slate-600 uppercase tracking-wider block mb-1.5">Name *</label>
+          <input value={name} onChange={e => setName(e.target.value)} placeholder="Red Team Alpha"
+            className="w-full bg-[#0a0a0a] border border-[#1e293b] rounded px-3 py-2 text-xs font-mono text-slate-200 placeholder-slate-700 focus:outline-none focus:border-cyan-500/50" />
+        </div>
+
+        <div>
+          <label className="text-[10px] font-mono text-slate-600 uppercase tracking-wider block mb-1.5">Beschreibung</label>
+          <input value={description} onChange={e => setDescription(e.target.value)} placeholder="Optional..."
+            className="w-full bg-[#0a0a0a] border border-[#1e293b] rounded px-3 py-2 text-xs font-mono text-slate-200 placeholder-slate-700 focus:outline-none focus:border-cyan-500/50" />
+        </div>
+
+        <div>
+          <label className="text-[10px] font-mono text-slate-600 uppercase tracking-wider block mb-2">Farbe</label>
+          <div className="flex gap-2">
+            {Object.entries(GROUP_COLORS).map(([c, cfg]) => (
+              <button key={c} onClick={() => setColor(c)}
+                style={{ backgroundColor: cfg.hex }}
+                className={`w-6 h-6 rounded-full transition-all ${color === c ? 'ring-2 ring-offset-2 ring-offset-[#0f172a] ring-white/60 scale-110' : 'opacity-50 hover:opacity-80'}`} />
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <label className="text-[10px] font-mono text-slate-600 uppercase tracking-wider block mb-2">Mitglieder</label>
+          <div className="space-y-1 max-h-40 overflow-y-auto">
+            {teamMembers.map(m => (
+              <label key={m.id} className="flex items-center gap-2.5 px-2 py-1.5 rounded hover:bg-slate-800/40 cursor-pointer">
+                <input type="checkbox" checked={memberIds.includes(m.id)} onChange={() => toggle(m.id)} className="accent-cyan-500" />
+                <MemberAvatar member={m} size="sm" />
+                <span className="text-xs font-mono text-slate-300">{m.nickname || m.name}</span>
+                <span className="text-[10px] font-mono text-slate-600 ml-auto">{m.role}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <label className="text-[10px] font-mono text-slate-600 uppercase tracking-wider block mb-1.5">Engagement verknüpfen (optional)</label>
+          <select value={engagementId} onChange={e => setEngId(e.target.value)}
+            className="w-full bg-[#0a0a0a] border border-[#1e293b] rounded px-3 py-2 text-xs font-mono text-slate-400 focus:outline-none focus:border-cyan-500/50">
+            <option value="">— Kein Engagement —</option>
+            {engagements.map(e => <option key={e.id} value={e.id}>{e.title}</option>)}
+          </select>
+        </div>
+
+        <div className="flex gap-3 pt-1">
+          <button onClick={onClose} className="flex-1 py-2 border border-[#1e293b] rounded text-xs font-mono text-slate-400 hover:text-slate-200 transition-all">Abbrechen</button>
+          <button onClick={() => { if (!name.trim()) return; onSave({ id: group?.id || `grp_${Date.now()}`, name: name.trim(), description: description.trim(), memberIds, engagementId: engagementId || null, color }) }}
+            disabled={!name.trim()}
+            className="flex-1 py-2 bg-cyan-500 hover:bg-cyan-400 disabled:opacity-40 rounded text-xs font-mono font-bold text-black transition-all">
+            {group ? 'Speichern' : 'Erstellen'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function EngagementGroupsPage({ groups, onAdd, onDelete, onEdit, teamMembers, currentUser }) {
+  const canManage = ['Admin', 'Senior Pentester'].includes(currentUser?.role)
+  const [showModal, setShowModal]       = useState(false)
+  const [editingGroup, setEditingGroup] = useState(null)
+
+  const openEdit = (g) => { setEditingGroup(g); setShowModal(true) }
+  const openNew  = () => { setEditingGroup(null); setShowModal(true) }
+
+  return (
+    <div className="p-6 space-y-5">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-sm font-mono font-bold text-slate-100 tracking-widest uppercase">Engagement Groups</h2>
+          <p className="text-[10px] font-mono text-slate-600 mt-0.5">{groups.length} Gruppe{groups.length !== 1 ? 'n' : ''} — Wer arbeitet zusammen an einem Pentest?</p>
+        </div>
+        {canManage && (
+          <button onClick={openNew}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-500/10 border border-cyan-500/30 rounded text-xs font-mono text-cyan-400 hover:bg-cyan-500/20 transition-all">
+            <Plus size={12} /> Gruppe erstellen
+          </button>
+        )}
+      </div>
+
+      {groups.length === 0 ? (
+        <Panel>
+          <div className="py-14 text-center space-y-2">
+            <Layers size={24} className="text-slate-700 mx-auto" />
+            <p className="text-xs font-mono text-slate-600">Noch keine Gruppen definiert.</p>
+            {canManage && <p className="text-[10px] font-mono text-slate-700">Erstelle Gruppen um Pentest-Teams pro Engagement zu organisieren.</p>}
+          </div>
+        </Panel>
+      ) : (
+        <div className="grid grid-cols-3 gap-4">
+          {groups.map(group => {
+            const gc = GROUP_COLORS[group.color] || GROUP_COLORS.cyan
+            const groupMembers = teamMembers.filter(m => group.memberIds.includes(m.id))
+            const linkedEng = ENGAGEMENTS.find(e => e.id === group.engagementId)
+            return (
+              <Panel key={group.id} className="p-4">
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-2.5 h-2.5 rounded-full ${gc.dot}`} />
+                    <span className="text-sm font-mono font-semibold text-slate-100">{group.name}</span>
+                  </div>
+                  {canManage && (
+                    <div className="flex gap-1">
+                      <button onClick={() => openEdit(group)} className="p-1 rounded text-slate-600 hover:text-cyan-400 hover:bg-cyan-500/10 transition-all"><Edit3 size={11} /></button>
+                      <button onClick={() => onDelete(group.id)} className="p-1 rounded text-slate-600 hover:text-red-400 hover:bg-red-500/10 transition-all"><Trash2 size={11} /></button>
+                    </div>
+                  )}
+                </div>
+
+                {group.description && <p className="text-[10px] font-mono text-slate-500 mb-3">{group.description}</p>}
+
+                <div className="mb-3">
+                  <div className="text-[10px] font-mono text-slate-600 uppercase tracking-wider mb-2">
+                    Mitglieder ({groupMembers.length})
+                  </div>
+                  {groupMembers.length === 0
+                    ? <span className="text-[10px] font-mono text-slate-700">Keine Mitglieder</span>
+                    : (
+                      <div className="space-y-1.5">
+                        <div className="flex -space-x-1.5">
+                          {groupMembers.map(m => (
+                            <div key={m.id} className="ring-1 ring-[#0f172a] rounded-full" title={m.name}>
+                              <MemberAvatar member={m} />
+                            </div>
+                          ))}
+                        </div>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {groupMembers.map(m => (
+                            <span key={m.id} className={`text-[9px] font-mono px-1.5 py-0.5 rounded ${gc.text} bg-slate-800`}>
+                              {m.nickname || m.name}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  }
+                </div>
+
+                {linkedEng ? (
+                  <div className="pt-3 border-t border-[#1e293b]">
+                    <div className="text-[10px] font-mono text-slate-600 uppercase tracking-wider mb-1.5">Engagement</div>
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <Calendar size={10} className={gc.text} />
+                      <span className={`text-[10px] font-mono truncate ${gc.text}`}>{linkedEng.title}</span>
+                    </div>
+                    <StatusBadge status={linkedEng.status} />
+                  </div>
+                ) : (
+                  <div className="pt-3 border-t border-[#1e293b]">
+                    <span className="text-[10px] font-mono text-slate-700">Kein Engagement verknüpft</span>
+                  </div>
+                )}
+              </Panel>
+            )
+          })}
+        </div>
+      )}
+
+      {showModal && (
+        <GroupModal
+          group={editingGroup}
+          teamMembers={teamMembers}
+          onSave={g => { editingGroup ? onEdit(g) : onAdd(g); setShowModal(false) }}
+          onClose={() => setShowModal(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+// ─── ROOT APP ────────────────────────────────────────────────────────────────
+
+// ─── AUDIT LOG ───────────────────────────────────────────────────────────────
+
+const LOG_CAT = {
+  auth:        { label: 'Auth',          color: 'text-cyan-400',   bg: 'bg-cyan-400/10 border-cyan-400/20',     dot: 'bg-cyan-400' },
+  findings:    { label: 'Findings',      color: 'text-red-400',    bg: 'bg-red-400/10 border-red-400/20',       dot: 'bg-red-400' },
+  clients:     { label: 'Clients',       color: 'text-blue-400',   bg: 'bg-blue-400/10 border-blue-400/20',     dot: 'bg-blue-400' },
+  engagements: { label: 'Engagements',   color: 'text-purple-400', bg: 'bg-purple-400/10 border-purple-400/20', dot: 'bg-purple-400' },
+  reports:     { label: 'Reports',       color: 'text-green-400',  bg: 'bg-green-400/10 border-green-400/20',   dot: 'bg-green-400' },
+  team:        { label: 'Team',          color: 'text-orange-400', bg: 'bg-orange-400/10 border-orange-400/20', dot: 'bg-orange-400' },
+  groups:      { label: 'Gruppen',       color: 'text-pink-400',   bg: 'bg-pink-400/10 border-pink-400/20',     dot: 'bg-pink-400' },
+  time:        { label: 'Zeiterfassung', color: 'text-yellow-400', bg: 'bg-yellow-400/10 border-yellow-400/20', dot: 'bg-yellow-400' },
+  download:    { label: 'Download',      color: 'text-teal-400',   bg: 'bg-teal-400/10 border-teal-400/20',     dot: 'bg-teal-400' },
+}
+
+function AuditLogPage({ logs = [], teamMembers = [], onClear }) {
+  const [search, setSearch] = useState('')
+  const [catFilter, setCatFilter] = useState('All')
+  const [userFilter, setUserFilter] = useState('All')
+  const [rangeFilter, setRangeFilter] = useState('7d')
+  const [confirmClear, setConfirmClear] = useState(false)
+
+  const now = Date.now()
+  const rangeCutoff = { '24h': now - 86400000, '7d': now - 7*86400000, '30d': now - 30*86400000, 'all': 0 }
+  const cutoff = rangeCutoff[rangeFilter] ?? 0
+
+  const filtered = [...logs].reverse().filter(l => {
+    const ts = new Date(l.timestamp).getTime()
+    if (ts < cutoff) return false
+    if (catFilter !== 'All' && l.category !== catFilter) return false
+    if (userFilter !== 'All' && l.userId !== userFilter) return false
+    const q = search.toLowerCase()
+    return !q || l.action.toLowerCase().includes(q) || l.details.toLowerCase().includes(q) || l.userName.toLowerCase().includes(q)
+  })
+
+  const today = new Date(); today.setHours(0,0,0,0)
+  const todayLogs   = logs.filter(l => new Date(l.timestamp) >= today)
+  const todayLogins = todayLogs.filter(l => l.action === 'LOGIN').length
+  const lastLog     = logs.length ? logs[logs.length - 1] : null
+  const userCounts  = logs.reduce((acc, l) => { acc[l.userName] = (acc[l.userName] || 0) + 1; return acc }, {})
+  const mostActive  = Object.entries(userCounts).sort((a,b) => b[1]-a[1])[0]
+
+  const fmtTs = (iso) => {
+    const d = new Date(iso)
+    return d.toLocaleDateString('de-DE', { day:'2-digit', month:'2-digit' }) + ' ' + d.toLocaleTimeString('de-DE', { hour:'2-digit', minute:'2-digit', second:'2-digit' })
+  }
+
+  const exportCSV = () => {
+    const rows = [['Timestamp','User','Rolle','Aktion','Details','Kategorie','IP']]
+    filtered.forEach(l => rows.push([l.timestamp, l.userName, l.role, l.action, `"${l.details.replace(/"/g,'""')}"`, l.category, l.ip]))
+    const csv = rows.map(r => r.join(',')).join('\n')
+    const a = document.createElement('a'); a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv)
+    a.download = `holysec_audit_${new Date().toISOString().slice(0,10)}.csv`; a.click()
+  }
+
+  return (
+    <div className="p-6 space-y-4">
+      {/* KPIs */}
+      <div className="grid grid-cols-4 gap-4">
+        <KpiCard label="Events gesamt" value={logs.length} sub="in der Datenbank" icon={ClipboardList} />
+        <KpiCard label="Heute" value={todayLogs.length} sub="Events (24h)" icon={Activity} accent />
+        <KpiCard label="Logins heute" value={todayLogins} sub="Auth-Events" icon={KeyRound} />
+        <KpiCard label="Aktivste Person" value={mostActive ? mostActive[0].split(' ')[0] : '–'} sub={mostActive ? `${mostActive[1]} Events` : ''} icon={Crown} />
+      </div>
+
+      {/* Filters */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="relative">
+          <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Suchen..."
+            className="bg-[#0f172a] border border-[#1e293b] rounded px-3 py-1.5 pl-8 text-xs font-mono text-slate-200 placeholder-slate-600 focus:outline-none focus:border-cyan-500/50 w-44" />
+        </div>
+        <div className="flex gap-1 flex-wrap">
+          {['All', ...Object.keys(LOG_CAT)].map(c => (
+            <button key={c} onClick={() => setCatFilter(c)}
+              className={`px-2 py-1 rounded text-[10px] font-mono border transition-all ${catFilter === c ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-400' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
+              {c === 'All' ? 'Alle' : LOG_CAT[c].label}
+            </button>
+          ))}
+        </div>
+        <select value={userFilter} onChange={e => setUserFilter(e.target.value)}
+          className="bg-[#0f172a] border border-[#1e293b] rounded px-2 py-1.5 text-xs font-mono text-slate-400 focus:outline-none focus:border-cyan-500/50">
+          <option value="All">Alle User</option>
+          {teamMembers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+        </select>
+        <select value={rangeFilter} onChange={e => setRangeFilter(e.target.value)}
+          className="bg-[#0f172a] border border-[#1e293b] rounded px-2 py-1.5 text-xs font-mono text-slate-400 focus:outline-none focus:border-cyan-500/50">
+          <option value="24h">Letzte 24h</option>
+          <option value="7d">Letzte 7 Tage</option>
+          <option value="30d">Letzte 30 Tage</option>
+          <option value="all">Alle</option>
+        </select>
+        <div className="ml-auto flex gap-2">
+          <button onClick={exportCSV}
+            className="flex items-center gap-1.5 px-3 py-1.5 border border-[#1e293b] rounded text-xs font-mono text-slate-500 hover:text-green-400 hover:border-green-500/40 transition-all">
+            <Download size={12} /> CSV Export
+          </button>
+          {confirmClear ? (
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] font-mono text-red-400">Sicher?</span>
+              <button onClick={() => { onClear(); setConfirmClear(false) }}
+                className="px-2 py-1 rounded border border-red-500/40 bg-red-500/10 text-[10px] font-mono text-red-400 hover:bg-red-500/20 transition-all">Ja</button>
+              <button onClick={() => setConfirmClear(false)}
+                className="px-2 py-1 rounded border border-[#1e293b] text-[10px] font-mono text-slate-500 hover:text-slate-300 transition-all">Nein</button>
+            </div>
+          ) : (
+            <button onClick={() => setConfirmClear(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 border border-[#1e293b] rounded text-xs font-mono text-slate-500 hover:text-red-400 hover:border-red-500/40 transition-all">
+              <Trash2 size={12} /> Logs löschen
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Table */}
+      <Panel>
+        <PanelHeader title="Event Log" subtitle={`${filtered.length} Einträge`} info="Vollständiges Aktivitätsprotokoll aller Benutzeraktionen. Zeigt Login-Zeiten, IP-Adressen, Datenänderungen und Downloads in Echtzeit." />
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs font-mono">
+            <thead>
+              <tr className="border-b border-[#1e293b]">
+                {['Zeitstempel', 'User', 'Rolle', 'Aktion', 'Details', 'Kategorie', 'IP'].map(h => (
+                  <th key={h} className="px-4 py-2.5 text-left text-[10px] text-slate-600 uppercase tracking-wider font-normal whitespace-nowrap">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#1e293b]">
+              {filtered.length === 0 ? (
+                <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-600 font-mono text-xs">Keine Events gefunden.</td></tr>
+              ) : filtered.map(l => {
+                const cat = LOG_CAT[l.category] || { label: l.category, color: 'text-slate-400', bg: 'bg-slate-400/10 border-slate-400/20', dot: 'bg-slate-400' }
+                const member = teamMembers.find(m => m.id === l.userId)
+                const clr = member ? MEMBER_COLOR_MAP[member.color] : null
+                return (
+                  <tr key={l.id} className="hover:bg-slate-800/20 transition-colors">
+                    <td className="px-4 py-2.5 text-slate-500 whitespace-nowrap">{fmtTs(l.timestamp)}</td>
+                    <td className="px-4 py-2.5 whitespace-nowrap">
+                      <div className="flex items-center gap-2">
+                        {member && <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold ${clr?.bg} text-white`}>{member.initials}</div>}
+                        <span className="text-slate-200">{l.userName}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded border ${ROLE_BADGE[l.role] || 'text-slate-400 bg-slate-400/10 border-slate-400/20'}`}>{l.role}</span>
+                    </td>
+                    <td className="px-4 py-2.5 text-slate-100 font-semibold whitespace-nowrap">{l.action}</td>
+                    <td className="px-4 py-2.5 text-slate-400 max-w-[240px] truncate" title={l.details}>{l.details}</td>
+                    <td className="px-4 py-2.5 whitespace-nowrap">
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[10px] font-mono ${cat.bg} ${cat.color}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${cat.dot}`} />{cat.label}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5 text-slate-600 font-mono whitespace-nowrap">{l.ip}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </Panel>
+
+      {lastLog && (
+        <p className="text-[10px] font-mono text-slate-700 text-right">
+          Letzter Eintrag: {fmtTs(lastLog.timestamp)} — {lastLog.userName}
+        </p>
+      )}
+    </div>
+  )
+}
+
+const PAGE_TITLES = {
+  dashboard:        { title: 'DASHBOARD',          subtitle: 'Client & Operations Overview' },
+  'client-radar':   { title: 'CLIENT RADAR',       subtitle: 'Client monitoring & status overview' },
+  'client-manager': { title: 'CLIENT MANAGER',     subtitle: 'All managed client accounts' },
+  findings:         { title: 'FINDINGS TRACKER',   subtitle: 'Vulnerability database — all engagements' },
+  engagements:      { title: 'ENGAGEMENT PLANNER', subtitle: 'Active and planned pentest operations' },
+  'eng-groups':     { title: 'ENGAGEMENT GROUPS',  subtitle: 'Pentest-Teams & Group Management' },
+  reports:          { title: 'REPORTING CENTER',   subtitle: 'Report registry and document management' },
+  team:             { title: 'TEAM',               subtitle: 'Operators & Assignment' },
+  about:            { title: 'ABOUT HOLYSEC',      subtitle: 'Blessed by Offense, Built for Defense.' },
+  settings:         { title: 'SETTINGS',           subtitle: 'Application configuration' },
+  audit:            { title: 'AUDIT LOG',           subtitle: 'System-Aktivitätsprotokoll — Admin only' },
+}
+
+export default function App() {
+  const [currentUser, setCurrentUser] = useState(null)
+  const [teamMembers, setTeamMembers] = useState(INITIAL_TEAM)
+  const [assignments, setAssignments] = useState(
+    Object.fromEntries(ENGAGEMENTS.map(e => [e.id, e.assignedTo || []]))
+  )
+  const [clients, setClients] = useState(CLIENTS)
+  const [timeEntries, setTimeEntries] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('holysec_time_entries') || '[]') } catch { return [] }
+  })
+  const [activeTimer, setActiveTimer] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('holysec_active_timer') || 'null') } catch { return null }
+  })
+  const [page, setPage] = useState('dashboard')
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [selectedClientId, setSelectedClientId] = useState(null)
+  const [reports, setReports] = useState(REPORTS)
+  const [darkMode, setDarkMode] = useState(true)
+  const [userPresence, setUserPresence] = useState('online')
+  const [engagementGroups, setEngagementGroups] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('holysec_eng_groups') || '[]') } catch { return [] }
+  })
+  const [customEngagements, setCustomEngagements] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('holysec_engagements') || '[]') } catch { return [] }
+  })
+  const [customFindings, setCustomFindings] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('holysec_findings') || '[]') } catch { return [] }
+  })
+  const [deletedFindingIds, setDeletedFindingIds] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('holysec_deleted_findings') || '[]')) } catch { return new Set() }
+  })
+  const [findingEdits, setFindingEdits] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('holysec_finding_edits') || '{}') } catch { return {} }
+  })
+  const [pageOpts, setPageOpts] = useState({})
+  const [customUsersAuth, setCustomUsersAuth] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('holysec_users_auth') || '[]') } catch { return [] }
+  })
+  const [auditLogs, setAuditLogs] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('holysec_audit_logs') || '[]') } catch { return [] }
+  })
+  const sessionIpRef = useRef('–')
+  const currentUserRef = useRef(null)
+
+  useEffect(() => { currentUserRef.current = currentUser }, [currentUser])
+
+  useEffect(() => {
+    fetch('https://api.ipify.org?format=json')
+      .then(r => r.json()).then(d => { sessionIpRef.current = d.ip })
+      .catch(() => { sessionIpRef.current = window.location.hostname || 'lokal' })
+  }, [])
+
+  useEffect(() => {
+    localStorage.setItem('holysec_audit_logs', JSON.stringify(auditLogs.slice(-1000)))
+  }, [auditLogs])
+
+  const logEvent = useCallback((action, details, category = 'general', userOverride = null) => {
+    const user = userOverride || currentUserRef.current
+    if (!user) return
+    setAuditLogs(prev => {
+      const entry = { id: `log_${Date.now()}_${Math.random().toString(36).slice(2,5)}`, userId: user.id, userName: user.name, role: user.role, action, details, category, ip: sessionIpRef.current, timestamp: new Date().toISOString() }
+      const next = [...prev, entry]
+      return next.length > 1000 ? next.slice(-1000) : next
+    })
+  }, [])
+
+  useEffect(() => {
+    document.body.classList.toggle('light-mode', !darkMode)
+  }, [darkMode])
+
+  useEffect(() => {
+    localStorage.setItem('holysec_time_entries', JSON.stringify(timeEntries))
+  }, [timeEntries])
+
+  useEffect(() => {
+    if (activeTimer) localStorage.setItem('holysec_active_timer', JSON.stringify(activeTimer))
+    else localStorage.removeItem('holysec_active_timer')
+  }, [activeTimer])
+
+  useEffect(() => {
+    localStorage.setItem('holysec_eng_groups', JSON.stringify(engagementGroups))
+  }, [engagementGroups])
+
+  useEffect(() => {
+    localStorage.setItem('holysec_engagements', JSON.stringify(customEngagements))
+  }, [customEngagements])
+
+  useEffect(() => {
+    localStorage.setItem('holysec_findings', JSON.stringify(customFindings))
+  }, [customFindings])
+
+  useEffect(() => {
+    localStorage.setItem('holysec_deleted_findings', JSON.stringify([...deletedFindingIds]))
+  }, [deletedFindingIds])
+
+  useEffect(() => {
+    localStorage.setItem('holysec_finding_edits', JSON.stringify(findingEdits))
+  }, [findingEdits])
+
+  useEffect(() => {
+    localStorage.setItem('holysec_users_auth', JSON.stringify(customUsersAuth))
+  }, [customUsersAuth])
+
+  const handleAddGroup    = useCallback((g) => { setEngagementGroups(p => [...p, g]); logEvent('GRUPPE_ERSTELLT', g.name, 'groups') }, [logEvent])
+  const handleEditGroup   = useCallback((g) => { setEngagementGroups(p => p.map(x => x.id === g.id ? g : x)); logEvent('GRUPPE_BEARBEITET', g.name, 'groups') }, [logEvent])
+  const handleDeleteGroup = useCallback((id) => { setEngagementGroups(p => p.filter(x => x.id !== id)); logEvent('GRUPPE_GELÖSCHT', `ID: ${id}`, 'groups') }, [logEvent])
+
+  const handleReportStatusChange = useCallback((id) => {
+    const cycle = { Draft: 'Delivered', Delivered: 'Final', Final: 'Draft' }
+    setReports(prev => prev.map(r => {
+      if (r.id !== id) return r
+      logEvent('REPORT_STATUS', `"${r.title}" → ${cycle[r.status]}`, 'reports')
+      return { ...r, status: cycle[r.status] || r.status }
+    }))
+  }, [logEvent])
+
+  const handleAddReport = useCallback((report) => {
+    setReports(prev => [...prev, report])
+    logEvent('REPORT_ERSTELLT', `"${report.title}" [${report.type}]`, 'reports')
+  }, [logEvent])
+
+  const handleLogin = useCallback((memberId) => {
+    const member = teamMembers.find(m => m.id === memberId)
+    if (member) {
+      setCurrentUser(member)
+      logEvent('LOGIN', `Anmeldung von ${window.location.host}`, 'auth', member)
+    }
+  }, [teamMembers, logEvent])
+
+  const handleLogout = useCallback(() => {
+    logEvent('LOGOUT', 'Abgemeldet', 'auth')
+    setActiveTimer(prev => {
+      if (prev) {
+        const end = Date.now()
+        setTimeEntries(entries => [...entries, {
+          id: `te${end}`,
+          userId: prev.userId,
+          userName: prev.userName,
+          date: new Date(prev.start).toISOString().split('T')[0],
+          start: new Date(prev.start).toTimeString().slice(0, 5),
+          end: new Date(end).toTimeString().slice(0, 5),
+          duration: Math.floor((end - prev.start) / 1000),
+        }])
+      }
+      return null
+    })
+    setCurrentUser(null)
+    setPage('dashboard')
+  }, [logEvent])
+
+  const handleAddMember = useCallback((member) => {
+    const { password, ...memberData } = member
+    setTeamMembers(prev => [...prev, memberData])
+    if (password) setCustomUsersAuth(prev => [...prev, { email: memberData.email, password, memberId: memberData.id }])
+    logEvent('MITARBEITER_ERSTELLT', `${memberData.name} [${memberData.role}]`, 'team')
+  }, [logEvent])
+  const handleRemoveMember = useCallback((id) => {
+    const m = teamMembers.find(x => x.id === id)
+    setTeamMembers(prev => prev.filter(x => x.id !== id))
+    setCustomUsersAuth(prev => prev.filter(a => a.memberId !== id))
+    logEvent('MITARBEITER_ENTFERNT', m ? `${m.name} [${m.role}]` : id, 'team')
+  }, [teamMembers, logEvent])
+  const handleEditMember = useCallback((member) => {
+    const { password, ...memberData } = member
+    setTeamMembers(prev => prev.map(m => m.id === memberData.id ? memberData : m))
+    setCurrentUser(prev => prev?.id === memberData.id ? memberData : prev)
+    if (password) {
+      setCustomUsersAuth(prev => {
+        const idx = prev.findIndex(a => a.memberId === memberData.id)
+        const entry = { email: memberData.email, password, memberId: memberData.id }
+        if (idx >= 0) { const n = [...prev]; n[idx] = entry; return n }
+        return [...prev, entry]
+      })
+    } else {
+      setCustomUsersAuth(prev => prev.map(a => a.memberId === memberData.id ? { ...a, email: memberData.email } : a))
+    }
+    logEvent('MITARBEITER_BEARBEITET', `${memberData.name} [${memberData.role}]${password ? ' + Passwort geändert' : ''}`, 'team')
+  }, [logEvent])
+  const handleAssign = useCallback((engId, memberIds) => {
+    setAssignments(prev => ({ ...prev, [engId]: memberIds }))
+    logEvent('ZUWEISUNG_GEÄNDERT', `Engagement ${engId} → ${memberIds.length} Mitglieder`, 'engagements')
+  }, [logEvent])
+
+  const handleAddFinding = useCallback((f) => {
+    setCustomFindings(prev => [...prev, f])
+    logEvent('FINDING_ERSTELLT', `"${f.title}" [${f.severity}] — ${f.category}`, 'findings')
+  }, [logEvent])
+  const handleDeleteFinding = useCallback((id) => {
+    setDeletedFindingIds(prev => new Set([...prev, id]))
+    setCustomFindings(prev => prev.filter(f => f.id !== id))
+    logEvent('FINDING_GELÖSCHT', `ID: ${id}`, 'findings')
+  }, [logEvent])
+  const handleEditFinding = useCallback((updated) => {
+    setFindingEdits(prev => ({ ...prev, [updated.id]: updated }))
+    setCustomFindings(prev => prev.map(f => f.id === updated.id ? updated : f))
+    logEvent('FINDING_BEARBEITET', `"${updated.title}" [${updated.severity}]`, 'findings')
+  }, [logEvent])
+  const handleNav = useCallback((targetPage, opts = {}) => {
+    setPage(targetPage)
+    setPageOpts(opts)
+  }, [])
+
+  const handleAddEngagement = useCallback((eng) => {
+    setCustomEngagements(prev => [...prev, eng])
+    setAssignments(prev => ({ ...prev, [eng.id]: [] }))
+    logEvent('ENGAGEMENT_ERSTELLT', `"${eng.title}" [${eng.type}] — ${eng.status}`, 'engagements')
+  }, [logEvent])
+
+  const handleAddClient    = useCallback((c) => { setClients(prev => [...prev, c]); logEvent('CLIENT_ERSTELLT', `"${c.name}" [${c.industry}]`, 'clients') }, [logEvent])
+  const handleEditClient   = useCallback((c) => { setClients(prev => prev.map(x => x.id === c.id ? c : x)); logEvent('CLIENT_BEARBEITET', `"${c.name}"`, 'clients') }, [logEvent])
+  const handleDeleteClient = useCallback((id) => { setClients(prev => prev.filter(x => x.id !== id)); logEvent('CLIENT_GELÖSCHT', `ID: ${id}`, 'clients') }, [logEvent])
+
+  const handleClockIn = useCallback(() => {
+    if (!currentUser || activeTimer) return
+    setActiveTimer({ userId: currentUser.id, userName: currentUser.name, start: Date.now() })
+    logEvent('ZEITERFASSUNG_START', `Timer gestartet`, 'time')
+  }, [currentUser, activeTimer, logEvent])
+
+  const handleClockOut = useCallback(() => {
+    if (!activeTimer) return
+    const end = Date.now()
+    const now = new Date(end)
+    const duration = Math.floor((end - activeTimer.start) / 1000)
+    setTimeEntries(prev => [...prev, {
+      id: `te${end}`,
+      userId: activeTimer.userId,
+      userName: activeTimer.userName,
+      date: new Date(activeTimer.start).toISOString().split('T')[0],
+      start: new Date(activeTimer.start).toTimeString().slice(0, 5),
+      end: now.toTimeString().slice(0, 5),
+      duration,
+    }])
+    setActiveTimer(null)
+    logEvent('ZEITERFASSUNG_STOP', `Dauer: ${formatDurationShort(duration)}`, 'time')
+  }, [activeTimer, logEvent])
+
+  const handleAuditLogDownload = useCallback((what) => logEvent('PDF_EXPORT', what, 'download'), [logEvent])
+  const handleClearAuditLogs = useCallback(() => { setAuditLogs([]); localStorage.removeItem('holysec_audit_logs') }, [])
+
+  const handleClientClick = useCallback((id) => { setSelectedClientId(id); setPage('client-detail') }, [])
+  const handleBackToClients = useCallback(() => { setSelectedClientId(null); setPage('client-manager') }, [])
+
+  const allEngagements = [...ENGAGEMENTS, ...customEngagements]
+  const allFindings = [...FINDINGS, ...customFindings]
+    .filter(f => !deletedFindingIds.has(f.id))
+    .map(f => findingEdits[f.id] ? findingEdits[f.id] : f)
+
+  const allUsersAuth = [...USERS_AUTH, ...customUsersAuth]
+
+  if (!currentUser) return <LoginPage onLogin={handleLogin} darkMode={darkMode} onToggleDark={() => setDarkMode(v => !v)} usersAuth={allUsersAuth} />
+
+  const titleInfo = PAGE_TITLES[page] || PAGE_TITLES['dashboard']
+
+  return (
+    <div className="flex h-screen bg-[#0a0a0a] text-slate-200 overflow-hidden">
+      <Sidebar
+        active={page} onNav={p => handleNav(p)}
+        collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(v => !v)}
+        currentUser={currentUser} onLogout={handleLogout}
+      />
+
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <TopBar
+          title={page === 'client-detail' ? 'CLIENT DETAIL' : titleInfo.title}
+          subtitle={page === 'client-detail' ? selectedClientId : titleInfo.subtitle}
+          currentUser={currentUser} assignments={assignments} clients={clients}
+          activeTimer={activeTimer} onClockIn={handleClockIn} onClockOut={handleClockOut}
+          userPresence={userPresence} onPresenceChange={setUserPresence}
+          darkMode={darkMode} onToggleDark={() => setDarkMode(v => !v)}
+        />
+
+        <main className="flex-1 overflow-y-auto">
+          {page === 'dashboard'        && <Dashboard onClientClick={handleClientClick} clients={clients} currentUser={currentUser} assignments={assignments} findings={allFindings} engagements={allEngagements} onNav={handleNav} />}
+          {page === 'client-radar'     && <ClientRadar onClientClick={handleClientClick} currentUser={currentUser} assignments={assignments} clients={clients} />}
+          {page === 'client-manager'   && <ClientList clients={clients} onClientClick={handleClientClick} currentUser={currentUser} assignments={assignments} onAdd={handleAddClient} onEdit={handleEditClient} onDelete={handleDeleteClient} defaultStatus={pageOpts.status} />}
+          {page === 'client-detail'    && selectedClientId && <ClientDetail clientId={selectedClientId} onBack={handleBackToClients} clients={clients} />}
+          {page === 'findings'         && <FindingsTracker currentUser={currentUser} assignments={assignments} findings={allFindings} onAddFinding={handleAddFinding} onEditFinding={handleEditFinding} onDeleteFinding={handleDeleteFinding} clients={clients} defaultSeverity={pageOpts.severity} defaultStatus={pageOpts.status} />}
+          {page === 'engagements'      && <EngagementPlanner teamMembers={teamMembers} assignments={assignments} onAssign={handleAssign} currentUser={currentUser} groups={engagementGroups} engagements={allEngagements} onAddEngagement={handleAddEngagement} clients={clients} defaultStatus={pageOpts.status} />}
+          {page === 'eng-groups'       && <EngagementGroupsPage groups={engagementGroups} onAdd={handleAddGroup} onEdit={handleEditGroup} onDelete={handleDeleteGroup} teamMembers={teamMembers} currentUser={currentUser} />}
+          {page === 'reports'          && <ReportingCenter reports={reports} onStatusChange={handleReportStatusChange} onAdd={handleAddReport} currentUser={currentUser} assignments={assignments} onAuditLog={handleAuditLogDownload} />}
+          {page === 'team'             && <TeamPage members={teamMembers} currentUser={currentUser} onAdd={handleAddMember} onRemove={handleRemoveMember} assignments={assignments} engagements={allEngagements} userPresence={userPresence} timeEntries={timeEntries} onAuditLog={handleAuditLogDownload} />}
+          {page === 'audit'            && <AuditLogPage logs={auditLogs} teamMembers={teamMembers} onClear={handleClearAuditLogs} />}
+          {page === 'about'            && <AboutHolySec />}
+          {page === 'settings'         && <SettingsPage members={teamMembers} currentUser={currentUser} onAdd={handleAddMember} onRemove={handleRemoveMember} onEdit={handleEditMember} timeEntries={timeEntries} darkMode={darkMode} onToggleDark={() => setDarkMode(v => !v)} />}
+        </main>
+      </div>
+    </div>
+  )
+}

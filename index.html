@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HolySec</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+    <style>
+      * { box-sizing: border-box; }
+      body { margin: 0; background: #0a0a0a; }
+
+      /* ── Light Mode ── */
+      body.light-mode { background: #f1f5f9; color: #0f172a; }
+      body.light-mode [class*="bg-[#0a0a0a]"] { background-color: #f1f5f9 !important; }
+      body.light-mode [class*="bg-[#0f172a]"] { background-color: #ffffff !important; }
+      body.light-mode [class*="bg-[#1e293b]"] { background-color: #e2e8f0 !important; }
+      body.light-mode [class*="border-[#1e293b]"] { border-color: #cbd5e1 !important; }
+      body.light-mode .text-slate-100 { color: #0f172a !important; }
+      body.light-mode .text-slate-200 { color: #1e293b !important; }
+      body.light-mode .text-slate-300 { color: #334155 !important; }
+      body.light-mode .text-slate-400 { color: #475569 !important; }
+      body.light-mode .text-slate-500 { color: #64748b !important; }
+      body.light-mode .text-slate-600 { color: #94a3b8 !important; }
+      body.light-mode .text-slate-700 { color: #cbd5e1 !important; }
+      body.light-mode .bg-slate-800 { background-color: #e2e8f0 !important; }
+      body.light-mode .bg-slate-800\/80 { background-color: rgba(226,232,240,0.8) !important; }
+      body.light-mode .divide-\[#1e293b\] > * + * { border-color: #e2e8f0 !important; }
+      body.light-mode .bg-\[#0a0a0a\]\/50 { background-color: rgba(241,245,249,0.5) !important; }
+      ::-webkit-scrollbar { width: 6px; height: 6px; }
+      ::-webkit-scrollbar-track { background: #0f172a; }
+      ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+      ::-webkit-scrollbar-thumb:hover { background: #06b6d4; }
+
+      /* ── Cyber Login Animations ── */
+      @keyframes grid-drift {
+        0%   { transform: translate(0, 0); }
+        100% { transform: translate(0, 100px); }
+      }
+      .cyber-grid {
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='100'%3E%3Cpath d='M28 66L0 50V16L28 0l28 16v34L28 66zM28 100L0 84V50l28-16 28 16v34L28 100z' fill='none' stroke='rgba(6,182,212,0.13)' stroke-width='1.2'/%3E%3C/svg%3E");
+        background-size: 56px 100px;
+        animation: grid-drift 18s linear infinite;
+        will-change: transform;
+      }
+
+      @keyframes scan-down {
+        0%   { transform: translateY(-4px); opacity: 0; }
+        5%   { opacity: 1; }
+        95%  { opacity: 0.6; }
+        100% { transform: translateY(100vh); opacity: 0; }
+      }
+      .scan-beam {
+        position: absolute;
+        top: 0;
+        left: 0; right: 0;
+        height: 2px;
+        background: linear-gradient(90deg, transparent 0%, rgba(6,182,212,0.5) 30%, rgba(6,182,212,0.9) 50%, rgba(6,182,212,0.5) 70%, transparent 100%);
+        box-shadow: 0 0 10px 2px rgba(6,182,212,0.3);
+        animation: scan-down 5s ease-in-out infinite;
+        animation-delay: 1s;
+        will-change: transform, opacity;
+      }
+
+      @keyframes cyber-glitch {
+        0%,88%,100% { text-shadow: none; transform: translate(0); }
+        89% { text-shadow: -2px 0 rgba(255,0,64,0.6), 2px 0 rgba(0,255,255,0.6); transform: translate(3px,0); }
+        90% { text-shadow:  2px 0 rgba(255,0,64,0.6),-2px 0 rgba(0,255,255,0.6); transform: translate(-3px,0); }
+        91% { text-shadow: -1px 0 rgba(255,0,64,0.4), 1px 0 rgba(0,255,255,0.4); transform: translate(1px,1px); }
+        92% { text-shadow: none; transform: translate(0); }
+        93% { text-shadow:  3px 0 rgba(255,0,64,0.3),-1px 0 rgba(0,255,255,0.3); transform: translate(-2px,0); }
+        94% { text-shadow: none; transform: translate(0); }
+      }
+      .cyber-glitch { animation: cyber-glitch 6s infinite; display: inline-block; }
+
+      @keyframes float-up {
+        0%   { transform: translateY(0)   scale(1);   opacity: 0.15; }
+        50%  { transform: translateY(-18px) scale(1.4); opacity: 0.4;  }
+        100% { transform: translateY(0)   scale(1);   opacity: 0.15; }
+      }
+      .particle { animation: float-up linear infinite; border-radius: 50%; position: absolute; will-change: transform, opacity; }
+
+      @keyframes corner-in {
+        from { opacity: 0; width: 0; height: 0; }
+        to   { opacity: 1; width: 16px; height: 16px; }
+      }
+      .corner { animation: corner-in 0.4s ease forwards; }
+
+      @keyframes boot-line {
+        from { opacity: 0; transform: translateX(-6px); }
+        to   { opacity: 1; transform: translateX(0); }
+      }
+      .boot-line { animation: boot-line 0.25s ease forwards; }
+
+      @keyframes form-in {
+        from { opacity: 0; transform: translateY(10px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+      .form-in { animation: form-in 0.4s ease forwards; }
+
+      @keyframes neon-border {
+        0%,100% { opacity: 0.4; }
+        50%      { opacity: 1; }
+      }
+      .neon-card {
+        box-shadow: 0 0 18px rgba(6,182,212,0.35), inset 0 0 12px rgba(6,182,212,0.05);
+      }
+      .neon-card-glow {
+        position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+        box-shadow: 0 0 24px rgba(6,182,212,0.5), inset 0 0 16px rgba(6,182,212,0.08);
+        animation: neon-border 3s ease-in-out infinite;
+        will-change: opacity;
+      }
+
+      @keyframes icon-pulse {
+        0%,100% { opacity: 0; }
+        50%      { opacity: 1; }
+      }
+      .icon-ring {
+        box-shadow: 0 0 0 8px rgba(6,182,212,0);
+      }
+      .icon-ring-glow {
+        position: absolute; inset: -8px; border-radius: inherit; pointer-events: none;
+        box-shadow: 0 0 0 8px rgba(6,182,212,0.2);
+        animation: icon-pulse 2.5s ease-in-out infinite;
+        will-change: opacity;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
