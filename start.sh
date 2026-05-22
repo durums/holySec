@@ -21,10 +21,24 @@ echo "  ██╔══██║██║   ██║██║    ╚██╔�
 echo "  ██║  ██║╚██████╔╝███████╗██║   ███████║███████╗╚██████╗"
 echo "  ╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚═╝   ╚══════╝╚══════╝ ╚═════╝"
 echo ""
-echo "  Pentest Operations Platform"
+echo "  [holySec] Build starten..."
+echo ""
+
+npm run build
+
+if [ $? -ne 0 ]; then
+  echo "[ERROR] Build fehlgeschlagen."
+  exit 1
+fi
+
+LOCAL_IP=$(ip -4 addr show scope global | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -1)
+[ -z "$LOCAL_IP" ] && LOCAL_IP=$(hostname -I | awk '{print $1}')
+
+echo ""
 echo "  ─────────────────────────────────────────────────"
-echo "  URL:     http://localhost:$PORT"
+echo "  Lokal:    http://localhost:$PORT"
+echo "  Netzwerk: http://$LOCAL_IP:$PORT"
 echo "  ─────────────────────────────────────────────────"
 echo ""
 
-npx vite --port $PORT --host
+npx vite preview
