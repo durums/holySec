@@ -7,8 +7,10 @@ import {
   Building2, Activity, Target, Globe, Network, UserCheck,
   Sword, Shield, Eye, Star, Zap, Lock, Info, ChevronDown,
   ChevronUp, ExternalLink, Plus, Search, Bell, Menu, Crown,
-  Users2, UserPlus, LogOut, Trash2, KeyRound, Edit3, StopCircle, PlayCircle, Timer, ClipboardList, Layers, Moon, Sun
+  Users2, UserPlus, LogOut, Trash2, KeyRound, Edit3, StopCircle, PlayCircle, Timer, ClipboardList, Layers, Moon, Sun, Map
 } from 'lucide-react'
+import { MapContainer, TileLayer, CircleMarker, Popup } from 'react-leaflet'
+import 'leaflet/dist/leaflet.css'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, LineChart, Line, Legend
@@ -25,6 +27,7 @@ const NAV_ITEMS = [
   { id: 'dashboard',      label: 'Dashboard',      icon: LayoutDashboard },
   { id: 'client-radar',   label: 'Client Radar',   icon: Activity },
   { id: 'client-manager', label: 'Client Manager', icon: Building2 },
+  { id: 'map',            label: 'Map',            icon: Map },
   { id: 'findings',       label: 'Findings',       icon: ShieldAlert },
   { id: 'engagements',    label: 'Engagements',    icon: Calendar },
   { id: 'eng-groups',     label: 'Eng. Groups',    icon: Layers, roles: ['Admin', 'Senior Pentester'] },
@@ -3706,6 +3709,66 @@ function GroupModal({ group, teamMembers, engagements = ENGAGEMENTS, onSave, onC
   )
 }
 
+const CRITICALITY_COLOR = {
+  CRITICAL: { fill: '#f87171', stroke: '#ef4444' },
+  HIGH:     { fill: '#fb923c', stroke: '#f97316' },
+  MEDIUM:   { fill: '#facc15', stroke: '#eab308' },
+  LOW:      { fill: '#4ade80', stroke: '#22c55e' },
+}
+
+function ClientMapPage({ clients = CLIENTS }) {
+  const mapped = clients.filter(c => c.lat && c.lng)
+  const center = [51.1657, 10.4515]
+
+  return (
+    <div className="h-full flex flex-col p-6 gap-4">
+      <div className="flex items-center gap-4 flex-wrap">
+        {Object.entries(CRITICALITY_COLOR).map(([level, col]) => (
+          <div key={level} className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded-full inline-block border" style={{ background: col.fill, borderColor: col.stroke }} />
+            <span className="text-[10px] font-mono text-slate-500 uppercase">{level}</span>
+          </div>
+        ))}
+        <span className="ml-auto text-[10px] font-mono text-slate-600">{mapped.length} Standorte</span>
+      </div>
+
+      <div className="flex-1 rounded-xl overflow-hidden border border-[#1e293b]" style={{ minHeight: 400 }}>
+        <MapContainer center={center} zoom={6} style={{ height: '100%', width: '100%' }} className="bg-[#0a0a0a]">
+          <TileLayer
+            url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+            attribution='&copy; <a href="https://carto.com/">CARTO</a>'
+          />
+          {mapped.map(c => {
+            const col = CRITICALITY_COLOR[c.criticality] || CRITICALITY_COLOR.LOW
+            return (
+              <CircleMarker
+                key={c.id}
+                center={[c.lat, c.lng]}
+                radius={c.openFindings > 0 ? 10 : 7}
+                pathOptions={{ color: col.stroke, fillColor: col.fill, fillOpacity: 0.85, weight: 2 }}
+              >
+                <Popup className="holysec-popup">
+                  <div className="bg-[#0f172a] border border-[#1e293b] rounded-lg p-3 text-left min-w-[180px]">
+                    <div className="text-xs font-mono font-bold text-slate-100 mb-1">{c.name}</div>
+                    <div className="text-[10px] font-mono text-slate-500 mb-2">{c.city} · {c.industry}</div>
+                    <div className="flex gap-2 flex-wrap">
+                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded" style={{ background: col.fill + '22', color: col.fill, border: `1px solid ${col.stroke}40` }}>{c.criticality}</span>
+                      <span className="text-[10px] font-mono text-slate-400">{c.status}</span>
+                    </div>
+                    {c.openFindings > 0 && (
+                      <div className="mt-2 text-[10px] font-mono text-red-400">{c.openFindings} open finding{c.openFindings !== 1 ? 's' : ''}</div>
+                    )}
+                  </div>
+                </Popup>
+              </CircleMarker>
+            )
+          })}
+        </MapContainer>
+      </div>
+    </div>
+  )
+}
+
 function EngagementGroupsPage({ groups, onAdd, onDelete, onEdit, teamMembers, currentUser }) {
   const canManage = ['Admin', 'Senior Pentester'].includes(currentUser?.role)
   const [showModal, setShowModal]       = useState(false)
@@ -4002,6 +4065,7 @@ const PAGE_TITLES = {
   about:            { title: 'ABOUT HOLYSEC',      subtitle: 'Blessed by Offense, Built for Defense.' },
   settings:         { title: 'SETTINGS',           subtitle: 'Application configuration' },
   audit:            { title: 'AUDIT LOG',           subtitle: 'System-Aktivitätsprotokoll — Admin only' },
+  map:              { title: 'CLIENT MAP',          subtitle: 'Geografische Übersicht aller Kundenstandorte' },
 }
 
 export default function App() {
@@ -4276,10 +4340,11 @@ export default function App() {
           darkMode={darkMode} onToggleDark={() => setDarkMode(v => !v)}
         />
 
-        <main className="flex-1 overflow-y-auto">
+        <main className={`flex-1 ${page === 'map' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
           {page === 'dashboard'        && <Dashboard onClientClick={handleClientClick} clients={clients} currentUser={currentUser} assignments={assignments} findings={allFindings} engagements={allEngagements} onNav={handleNav} />}
           {page === 'client-radar'     && <ClientRadar onClientClick={handleClientClick} currentUser={currentUser} assignments={assignments} clients={clients} />}
           {page === 'client-manager'   && <ClientList clients={clients} onClientClick={handleClientClick} currentUser={currentUser} assignments={assignments} onAdd={handleAddClient} onEdit={handleEditClient} onDelete={handleDeleteClient} defaultStatus={pageOpts.status} />}
+          {page === 'map'              && <ClientMapPage clients={clients} />}
           {page === 'client-detail'    && selectedClientId && <ClientDetail clientId={selectedClientId} onBack={handleBackToClients} clients={clients} />}
           {page === 'findings'         && <FindingsTracker currentUser={currentUser} assignments={assignments} findings={allFindings} onAddFinding={handleAddFinding} onEditFinding={handleEditFinding} onDeleteFinding={handleDeleteFinding} clients={clients} defaultSeverity={pageOpts.severity} defaultStatus={pageOpts.status} />}
           {page === 'engagements'      && <EngagementPlanner teamMembers={teamMembers} assignments={assignments} onAssign={handleAssign} currentUser={currentUser} groups={engagementGroups} engagements={allEngagements} onAddEngagement={handleAddEngagement} clients={clients} defaultStatus={pageOpts.status} />}

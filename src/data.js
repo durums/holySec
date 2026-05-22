@@ -20,6 +20,7 @@ export const CLIENTS = [
     engagements: ['e001', 'e002', 'e005'],
     reports: ['r001', 'r002'],
     openFindings: 3,
+    lat: 50.9333, lng: 6.9500, city: 'Köln',
   },
   {
     id: 'c002',
@@ -40,6 +41,7 @@ export const CLIENTS = [
     engagements: ['e003'],
     reports: ['r003'],
     openFindings: 2,
+    lat: 50.7374, lng: 7.0982, city: 'Bonn',
   },
   {
     id: 'c003',
@@ -60,6 +62,7 @@ export const CLIENTS = [
     engagements: ['e004'],
     reports: [],
     openFindings: 2,
+    lat: 52.5200, lng: 13.4050, city: 'Berlin',
   },
   {
     id: 'c004',
@@ -80,6 +83,7 @@ export const CLIENTS = [
     engagements: ['e006', 'e007'],
     reports: ['r004', 'r005'],
     openFindings: 1,
+    lat: 50.0782, lng: 8.2397, city: 'Wiesbaden',
   },
   {
     id: 'c005',
@@ -100,6 +104,7 @@ export const CLIENTS = [
     engagements: ['e008', 'e009'],
     reports: ['r006'],
     openFindings: 4,
+    lat: 48.1351, lng: 11.5820, city: 'München',
   },
   {
     id: 'c006',
@@ -120,6 +125,7 @@ export const CLIENTS = [
     engagements: ['e010'],
     reports: [],
     openFindings: 2,
+    lat: 51.2217, lng: 6.7762, city: 'Düsseldorf',
   },
 ]
 
