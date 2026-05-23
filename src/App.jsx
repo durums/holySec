@@ -2404,13 +2404,12 @@ function NewEngagementModal({ clients = CLIENTS, currentUser, onSave, onClose })
   )
 }
 
-function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, currentUser, groups = [], engagements: allEngProp = ENGAGEMENTS, onAddEngagement, onStatusChange, clients: allClientsProp = CLIENTS, defaultStatus = 'All', defaultClientId = null, tipsLang = 'de', pendingReports = {}, onSetPendingReport }) {
+function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, currentUser, groups = [], engagements: allEngProp = ENGAGEMENTS, onAddEngagement, onStatusChange, clients: allClientsProp = CLIENTS, defaultStatus = 'All', defaultClientId = null, tipsLang = 'de', pendingReports = {}, onEngDetail }) {
   const ENG_STATUS_CYCLE = { Planned: 'Active', Active: 'On Hold', 'On Hold': 'Completed', Completed: 'Planned' }
   const canCycleStatus = currentUser?.role === 'Admin' || currentUser?.role === 'Senior Pentester'
   const [view, setView] = useState('timeline')
   const [selectedEng, setSelectedEng] = useState(null)
   const [assignModal, setAssignModal] = useState(null)
-  const [detailModal, setDetailModal] = useState(null)
   const [statusFilter, setStatusFilter] = useState(defaultStatus)
   const [myOnly, setMyOnly] = useState(false)
   const [showNewModal, setShowNewModal] = useState(false)
@@ -2547,7 +2546,7 @@ function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, curre
                         </button>
                       )}
                       <button
-                        onClick={e => { e.stopPropagation(); setDetailModal(eng) }}
+                        onClick={e => { e.stopPropagation(); onEngDetail?.(eng.id) }}
                         className={`flex items-center gap-1 px-2 py-0.5 rounded border text-[9px] font-mono transition-all ${pendingReports[eng.id] ? 'border-yellow-500/40 text-yellow-400 hover:bg-yellow-500/10' : 'border-[#1e293b] text-slate-600 hover:text-slate-300 hover:border-slate-600'}`}>
                         <FileText size={9} /> Details
                       </button>
@@ -2576,17 +2575,6 @@ function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, curre
           onSave={onAssign}
           onClose={() => setAssignModal(null)}
           groups={groups}
-        />
-      )}
-
-      {detailModal && (
-        <EngagementDetailModal
-          engagement={detailModal}
-          client={allClientsProp.find(c => c.id === detailModal.clientId)}
-          assignedMembers={(assignments[detailModal.id] || []).map(uid => teamMembers.find(t => t.id === uid)).filter(Boolean)}
-          pendingReport={pendingReports[detailModal.id] || null}
-          onSavePendingReport={onSetPendingReport}
-          onClose={() => setDetailModal(null)}
         />
       )}
 
@@ -2634,7 +2622,7 @@ function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, curre
                     </td>
                     <td className="px-4 py-3">
                       <button
-                        onClick={() => setDetailModal(eng)}
+                        onClick={() => onEngDetail?.(eng.id)}
                         className={`flex items-center gap-1 px-2 py-0.5 rounded border text-[9px] font-mono transition-all ${pendingReports[eng.id] ? 'border-yellow-500/40 text-yellow-400 hover:bg-yellow-500/10' : 'border-[#1e293b] text-slate-600 hover:text-slate-300 hover:border-slate-600'}`}>
                         <FileText size={9} /> Details
                       </button>
@@ -3844,115 +3832,259 @@ function AssignTeamModal({ engagement, teamMembers, assigned, onSave, onClose, g
   )
 }
 
-function EngagementDetailModal({ engagement, client, assignedMembers = [], pendingReport, onSavePendingReport, onClose }) {
-  const [reportForm, setReportForm] = useState(pendingReport || { title: '', type: 'Technical Report' })
-  const hasPending = !!(pendingReport?.title)
+function EngagementDetail({ engagementId, onBack, clients: allClients = CLIENTS, teamMembers = [], assignments = {}, engagements: allEngagements = ENGAGEMENTS, pendingReports = {}, onSetPendingReport }) {
+  const engagement = allEngagements.find(e => e.id === engagementId)
+  const client = allClients.find(c => c.id === engagement?.clientId)
+  const assignedMembers = (assignments[engagementId] || []).map(uid => teamMembers.find(t => t.id === uid)).filter(Boolean)
+  const pendingReport = pendingReports[engagementId] || null
+
+  const [reportForm, setReportForm] = useState({ title: pendingReport?.title || '', type: pendingReport?.type || 'Technical Report' })
+  const [uploadedFile, setUploadedFile] = useState(pendingReport?.fileName ? { name: pendingReport.fileName } : null)
+  const [dragOver, setDragOver] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const fileRef = useRef(null)
+
+  const handleFile = (file) => {
+    if (!file || file.type !== 'application/pdf') return
+    setUploadedFile({ name: file.name, size: file.size })
+    if (!reportForm.title) setReportForm(f => ({ ...f, title: file.name.replace(/\.pdf$/i, '') }))
+  }
+
+  const handleDrop = (e) => {
+    e.preventDefault()
+    setDragOver(false)
+    handleFile(e.dataTransfer.files[0])
+  }
+
+  const handleSave = () => {
+    if (!reportForm.title.trim()) return
+    onSetPendingReport?.(engagementId, { ...reportForm, fileName: uploadedFile?.name || null })
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
+  }
+
+  const handleDiscard = () => {
+    onSetPendingReport?.(engagementId, null)
+    setReportForm({ title: '', type: 'Technical Report' })
+    setUploadedFile(null)
+  }
+
+  if (!engagement) return null
+
+  const hoursUsed = client?.contract?.used || 0
+  const hoursTotal = client?.contract?.hours || 1
+  const hoursPercent = hoursUsed / hoursTotal
 
   return (
-    <div className="fixed inset-0 bg-black/75 z-50 flex items-center justify-center p-6" onClick={onClose}>
-      <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[#1e293b] sticky top-0 bg-[#0f172a] z-10">
-          <div>
-            <h2 className="text-sm font-mono font-bold text-slate-100">{engagement.title}</h2>
-            <p className="text-[10px] font-mono text-slate-500 mt-0.5">{client?.name} — {engagement.type}</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <StatusBadge status={engagement.status} />
-            <button onClick={onClose} className="p-1.5 rounded text-slate-500 hover:text-slate-200 hover:bg-slate-800 transition-all"><X size={14} /></button>
-          </div>
-        </div>
+    <div className="p-6 space-y-6">
+      {/* Back */}
+      <button onClick={onBack} className="flex items-center gap-2 text-xs font-mono text-slate-500 hover:text-cyan-400 transition-colors">
+        <ChevronLeft size={14} /> Zurück zu Engagements
+      </button>
 
-        <div className="p-6 space-y-5">
+      {/* Header */}
+      <div className="flex items-start justify-between">
+        <div>
+          <div className="flex items-center gap-3 mb-1">
+            <Calendar size={18} className="text-cyan-400" />
+            <h1 className="text-xl font-mono font-bold text-slate-100">{engagement.title}</h1>
+            <StatusBadge status={engagement.status} size="md" />
+          </div>
+          <p className="text-sm font-mono text-slate-500">{client?.name || '—'} · {engagement.type} · {engagement.id}</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-6">
+        {/* Left column: Engagement + Team */}
+        <div className="col-span-2 space-y-5">
+
           {/* Engagement Details */}
-          <div>
-            <div className="text-[10px] font-mono text-slate-600 uppercase tracking-widest mb-3 flex items-center gap-1.5">
-              <Calendar size={9} /> Engagement Details
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="bg-[#0a0a0a] border border-[#1e293b] rounded-lg p-3">
+          <Panel>
+            <PanelHeader title="Engagement Details" subtitle={`${engagement.start} → ${engagement.end}`} />
+            <div className="p-4 grid grid-cols-2 gap-4">
+              <div>
                 <div className="text-[9px] font-mono text-slate-600 uppercase mb-1">Zeitraum</div>
-                <div className="text-xs font-mono text-slate-200">{engagement.start} → {engagement.end}</div>
+                <div className="text-sm font-mono text-slate-200">{engagement.start} → {engagement.end}</div>
               </div>
-              <div className="bg-[#0a0a0a] border border-[#1e293b] rounded-lg p-3">
+              <div>
                 <div className="text-[9px] font-mono text-slate-600 uppercase mb-1">Lead</div>
-                <div className="text-xs font-mono text-slate-200">{engagement.lead}</div>
+                <div className="text-sm font-mono text-slate-200">{engagement.lead || '—'}</div>
               </div>
-              <div className="bg-[#0a0a0a] border border-[#1e293b] rounded-lg p-3 col-span-2">
+              <div>
+                <div className="text-[9px] font-mono text-slate-600 uppercase mb-1">Typ</div>
+                <div className="text-sm font-mono text-slate-200">{engagement.type}</div>
+              </div>
+              <div>
+                <div className="text-[9px] font-mono text-slate-600 uppercase mb-1">Status</div>
+                <StatusBadge status={engagement.status} />
+              </div>
+              <div className="col-span-2">
                 <div className="text-[9px] font-mono text-slate-600 uppercase mb-2">Phasen</div>
-                <div className="flex gap-1.5">
+                <div className="flex gap-2">
                   {['Recon', 'Scanning', 'Exploitation', 'Reporting'].map(phase => {
                     const active = engagement.phases?.includes(phase)
                     const cfg = PHASE_COLORS[phase]
                     return (
-                      <span key={phase} className={`px-2 py-0.5 rounded text-[9px] font-mono border ${active ? `${cfg.text} ${cfg.border}` : 'text-slate-700 border-transparent bg-slate-900'}`}>{phase}</span>
+                      <div key={phase} className={`flex-1 rounded-lg p-3 border text-center ${active ? `${cfg.border} bg-current/5` : 'border-[#1e293b] opacity-30'}`}>
+                        <div className={`h-1.5 rounded-full mb-2 ${active ? cfg.bg : 'bg-slate-800'}`} />
+                        <span className={`text-[10px] font-mono font-medium ${active ? cfg.text : 'text-slate-600'}`}>{phase}</span>
+                      </div>
                     )
                   })}
                 </div>
               </div>
             </div>
-          </div>
+          </Panel>
 
           {/* Team */}
-          {assignedMembers.length > 0 && (
-            <div>
-              <div className="text-[10px] font-mono text-slate-600 uppercase tracking-widest mb-3 flex items-center gap-1.5">
-                <Users2 size={9} /> Zugewiesenes Team
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {assignedMembers.map(m => (
-                  <div key={m.id} className="flex items-center gap-2 bg-[#0a0a0a] border border-[#1e293b] rounded-lg px-3 py-1.5">
-                    <MemberAvatar member={m} />
-                    <div>
-                      <div className="text-xs font-mono text-slate-200">{m.name}</div>
-                      <div className="text-[9px] font-mono text-slate-500">{m.role}</div>
+          <Panel>
+            <PanelHeader title="Zugewiesenes Team" subtitle={`${assignedMembers.length} Mitglieder`} />
+            <div className="p-4">
+              {assignedMembers.length > 0 ? (
+                <div className="grid grid-cols-2 gap-2">
+                  {assignedMembers.map(m => (
+                    <div key={m.id} className="flex items-center gap-3 bg-[#0a0a0a] border border-[#1e293b] rounded-lg px-3 py-2.5">
+                      <MemberAvatar member={m} />
+                      <div>
+                        <div className="text-xs font-mono font-medium text-slate-200">{m.name}</div>
+                        <div className="text-[10px] font-mono text-slate-500">{m.role}</div>
+                      </div>
                     </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs font-mono text-slate-600 py-2">Noch kein Team zugewiesen.</p>
+              )}
+            </div>
+          </Panel>
+
+          {/* Report Upload */}
+          <Panel>
+            <PanelHeader title="Report" subtitle="Wird bei Completion automatisch veröffentlicht"
+              info={pendingReport ? `Ausstehend: ${pendingReport.title}` : undefined} />
+            <div className="p-4 space-y-4">
+              {/* Drag & Drop Zone */}
+              <div
+                onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={handleDrop}
+                onClick={() => fileRef.current?.click()}
+                className={`relative border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${dragOver ? 'border-cyan-400/60 bg-cyan-400/5' : uploadedFile ? 'border-green-500/40 bg-green-500/5' : 'border-[#1e293b] hover:border-slate-600 hover:bg-slate-800/20'}`}>
+                <input ref={fileRef} type="file" accept=".pdf" className="hidden" onChange={e => handleFile(e.target.files[0])} />
+                {uploadedFile ? (
+                  <div className="space-y-1">
+                    <FileText size={28} className="text-green-400 mx-auto mb-2" />
+                    <div className="text-sm font-mono font-medium text-green-400">{uploadedFile.name}</div>
+                    {uploadedFile.size && <div className="text-[10px] font-mono text-slate-500">{(uploadedFile.size / 1024).toFixed(1)} KB</div>}
+                    <div className="text-[10px] font-mono text-slate-600 mt-1">Klicken oder neues PDF hierher ziehen zum Ersetzen</div>
                   </div>
-                ))}
+                ) : (
+                  <div className="space-y-2">
+                    <Download size={28} className="text-slate-600 mx-auto mb-2" />
+                    <div className="text-sm font-mono text-slate-400">PDF hierher ziehen</div>
+                    <div className="text-[10px] font-mono text-slate-600">oder klicken zum Auswählen</div>
+                  </div>
+                )}
+              </div>
+
+              {/* Form */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[9px] font-mono text-slate-600 uppercase mb-1.5 block">Titel *</label>
+                  <input
+                    value={reportForm.title}
+                    onChange={e => setReportForm(f => ({ ...f, title: e.target.value }))}
+                    placeholder="z.B. Technical Report Q2 2026"
+                    className="w-full bg-[#0a0a0a] border border-[#1e293b] rounded-lg px-3 py-2.5 text-xs font-mono text-slate-200 placeholder-slate-700 focus:outline-none focus:border-cyan-500/50 transition-colors"
+                  />
+                </div>
+                <div>
+                  <label className="text-[9px] font-mono text-slate-600 uppercase mb-1.5 block">Typ</label>
+                  <select
+                    value={reportForm.type}
+                    onChange={e => setReportForm(f => ({ ...f, type: e.target.value }))}
+                    className="w-full bg-[#0a0a0a] border border-[#1e293b] rounded-lg px-3 py-2.5 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500/50 transition-colors">
+                    <option>Technical Report</option>
+                    <option>Executive Summary</option>
+                    <option>Remediation Plan</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleSave}
+                  disabled={!reportForm.title.trim()}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-cyan-500/40 bg-cyan-500/10 text-xs font-mono text-cyan-400 hover:bg-cyan-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-all">
+                  {saved ? <CheckCircle2 size={12} /> : <FileText size={12} />}
+                  {saved ? 'Gespeichert!' : 'Report hinterlegen'}
+                </button>
+                {pendingReport?.title && (
+                  <button onClick={handleDiscard}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-red-500/30 bg-red-500/5 text-xs font-mono text-red-400 hover:bg-red-500/10 transition-all">
+                    <X size={12} /> Verwerfen
+                  </button>
+                )}
+                {pendingReport?.title && (
+                  <span className="ml-auto flex items-center gap-1.5 px-2.5 py-1 rounded bg-yellow-400/10 border border-yellow-400/20 text-[10px] font-mono text-yellow-400">
+                    <Clock size={9} /> Ausstehend: {pendingReport.title}
+                  </span>
+                )}
               </div>
             </div>
-          )}
+          </Panel>
+        </div>
 
-          {/* Client Info */}
-          {client && (
-            <div>
-              <div className="text-[10px] font-mono text-slate-600 uppercase tracking-widest mb-3 flex items-center gap-1.5">
-                <Building2 size={9} /> Client-Informationen
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-[#0a0a0a] border border-[#1e293b] rounded-lg p-3">
-                  <div className="text-[9px] font-mono text-slate-600 uppercase mb-2">Kontakt</div>
-                  <div className="text-xs font-mono text-slate-200 mb-0.5">{client.contact?.name}</div>
-                  <div className="text-[10px] font-mono text-slate-500">{client.contact?.email}</div>
-                  <div className="text-[10px] font-mono text-slate-500">{client.contact?.phone}</div>
-                </div>
-                <div className="bg-[#0a0a0a] border border-[#1e293b] rounded-lg p-3">
-                  <div className="text-[9px] font-mono text-slate-600 uppercase mb-2">Vertrag</div>
-                  <div className="text-[10px] font-mono text-slate-400 mb-1">{client.contract?.start} → {client.contract?.end}</div>
-                  <div className="flex justify-between text-[9px] font-mono text-slate-600 mb-1">
-                    <span>Stunden</span>
-                    <span className={client.contract?.used / client.contract?.hours > 0.85 ? 'text-red-400' : 'text-slate-400'}>
-                      {client.contract?.used} / {client.contract?.hours}h
-                    </span>
+        {/* Right column: Client Info */}
+        <div className="space-y-5">
+          {client ? (
+            <>
+              <Panel>
+                <PanelHeader title="Client" subtitle={client.name} />
+                <div className="p-4 space-y-4">
+                  <div>
+                    <div className="text-[9px] font-mono text-slate-600 uppercase mb-2">Status & Kritikalität</div>
+                    <div className="flex gap-2 flex-wrap">
+                      <StatusBadge status={client.status} />
+                      <SeverityBadge severity={client.criticality} />
+                    </div>
                   </div>
-                  <div className="h-1 rounded-full bg-slate-800">
-                    <div className={`h-1 rounded-full ${client.contract?.used / client.contract?.hours > 0.85 ? 'bg-red-500' : 'bg-cyan-500'}`}
-                      style={{ width: `${Math.min(100, (client.contract?.used / client.contract?.hours) * 100)}%` }} />
+                  <div>
+                    <div className="text-[9px] font-mono text-slate-600 uppercase mb-2">Kontakt</div>
+                    <div className="text-xs font-mono text-slate-200 mb-0.5">{client.contact?.name}</div>
+                    <div className="text-[10px] font-mono text-slate-500 break-all">{client.contact?.email}</div>
+                    <div className="text-[10px] font-mono text-slate-500">{client.contact?.phone}</div>
+                  </div>
+                  <div>
+                    <div className="text-[9px] font-mono text-slate-600 uppercase mb-2">Vertrag</div>
+                    <div className="text-[10px] font-mono text-slate-400 mb-2">{client.contract?.start} → {client.contract?.end}</div>
+                    <div className="flex justify-between text-[9px] font-mono text-slate-600 mb-1.5">
+                      <span>Stunden</span>
+                      <span className={hoursPercent > 0.85 ? 'text-red-400' : 'text-slate-400'}>{hoursUsed} / {hoursTotal}h</span>
+                    </div>
+                    <div className="h-1.5 rounded-full bg-slate-800">
+                      <div className={`h-1.5 rounded-full transition-all ${hoursPercent > 0.85 ? 'bg-red-500' : 'bg-cyan-500'}`}
+                        style={{ width: `${Math.min(100, hoursPercent * 100)}%` }} />
+                    </div>
                   </div>
                 </div>
-                {client.scope && (
-                  <div className="bg-[#0a0a0a] border border-[#1e293b] rounded-lg p-3 col-span-2">
-                    <div className="text-[9px] font-mono text-slate-600 uppercase mb-2">Scope</div>
+              </Panel>
+
+              {client.scope && (
+                <Panel>
+                  <PanelHeader title="Scope" subtitle={client.scopeType} />
+                  <div className="p-4 space-y-3">
                     {client.scope.ipRanges?.length > 0 && (
-                      <div className="mb-2">
-                        <div className="text-[9px] font-mono text-slate-600 mb-1">IP-Ranges</div>
+                      <div>
+                        <div className="text-[9px] font-mono text-slate-600 uppercase mb-1.5">IP-Ranges</div>
                         <div className="flex flex-wrap gap-1">
                           {client.scope.ipRanges.map((r, i) => <span key={i} className="px-1.5 py-0.5 rounded bg-slate-800 text-[9px] font-mono text-cyan-400">{r}</span>)}
                         </div>
                       </div>
                     )}
                     {client.scope.domains?.length > 0 && (
-                      <div className="mb-2">
-                        <div className="text-[9px] font-mono text-slate-600 mb-1">Domains</div>
+                      <div>
+                        <div className="text-[9px] font-mono text-slate-600 uppercase mb-1.5">Domains</div>
                         <div className="flex flex-wrap gap-1">
                           {client.scope.domains.map((d, i) => <span key={i} className="px-1.5 py-0.5 rounded bg-slate-800 text-[9px] font-mono text-slate-300">{d}</span>)}
                         </div>
@@ -3960,64 +4092,21 @@ function EngagementDetailModal({ engagement, client, assignedMembers = [], pendi
                     )}
                     {client.scope.exclusions?.length > 0 && (
                       <div>
-                        <div className="text-[9px] font-mono text-slate-600 mb-1">Ausschlüsse</div>
+                        <div className="text-[9px] font-mono text-slate-600 uppercase mb-1.5 flex items-center gap-1"><AlertTriangle size={8} className="text-red-400" /> Ausschlüsse</div>
                         <div className="flex flex-wrap gap-1">
                           {client.scope.exclusions.map((ex, i) => <span key={i} className="px-1.5 py-0.5 rounded bg-red-900/20 border border-red-900/30 text-[9px] font-mono text-red-400">{ex}</span>)}
                         </div>
                       </div>
                     )}
                   </div>
-                )}
-              </div>
-            </div>
+                </Panel>
+              )}
+            </>
+          ) : (
+            <Panel>
+              <div className="p-4 text-xs font-mono text-slate-600">Kein Client verknüpft.</div>
+            </Panel>
           )}
-
-          {/* Report staging */}
-          <div>
-            <div className="text-[10px] font-mono text-slate-600 uppercase tracking-widest mb-3 flex items-center gap-2">
-              <FileText size={9} /> Report
-              {hasPending && <span className="px-1.5 py-0.5 rounded bg-yellow-400/10 border border-yellow-400/20 text-[9px] font-mono text-yellow-400">Ausstehend</span>}
-            </div>
-            <div className="bg-[#0a0a0a] border border-[#1e293b] rounded-lg p-4 space-y-3">
-              <p className="text-[10px] font-mono text-slate-500">Wird automatisch in "Reports" veröffentlicht, sobald das Engagement auf Completed gesetzt wird.</p>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[9px] font-mono text-slate-600 uppercase mb-1 block">Titel</label>
-                  <input
-                    value={reportForm.title}
-                    onChange={e => setReportForm(f => ({ ...f, title: e.target.value }))}
-                    placeholder="z.B. Technical Report Q2 2026"
-                    className="w-full bg-[#0f172a] border border-[#1e293b] rounded px-3 py-2 text-xs font-mono text-slate-200 placeholder-slate-700 focus:outline-none focus:border-cyan-500/50"
-                  />
-                </div>
-                <div>
-                  <label className="text-[9px] font-mono text-slate-600 uppercase mb-1 block">Typ</label>
-                  <select
-                    value={reportForm.type}
-                    onChange={e => setReportForm(f => ({ ...f, type: e.target.value }))}
-                    className="w-full bg-[#0f172a] border border-[#1e293b] rounded px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500/50">
-                    <option>Technical Report</option>
-                    <option>Executive Summary</option>
-                    <option>Remediation Plan</option>
-                  </select>
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => { if (reportForm.title.trim()) { onSavePendingReport(engagement.id, reportForm); onClose() } }}
-                  disabled={!reportForm.title.trim()}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-cyan-500/40 bg-cyan-500/10 text-xs font-mono text-cyan-400 hover:bg-cyan-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-all">
-                  <FileText size={11} /> Speichern
-                </button>
-                {hasPending && (
-                  <button onClick={() => { onSavePendingReport(engagement.id, null); setReportForm({ title: '', type: 'Technical Report' }) }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-red-500/30 bg-red-500/5 text-xs font-mono text-red-400 hover:bg-red-500/10 transition-all">
-                    <X size={11} /> Verwerfen
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </div>
@@ -4819,6 +4908,7 @@ const PAGE_TITLES = {
   'client-manager': { title: 'CLIENT MANAGER',     subtitle: 'All managed client accounts' },
   findings:         { title: 'FINDINGS TRACKER',   subtitle: 'Vulnerability database — all engagements' },
   engagements:      { title: 'ENGAGEMENT PLANNER', subtitle: 'Active and planned pentest operations' },
+  'eng-detail':     { title: 'ENGAGEMENT DETAIL',  subtitle: 'Client info, scope & report upload' },
   'eng-groups':     { title: 'ENGAGEMENT GROUPS',  subtitle: 'Pentest-Teams & Group Management' },
   reports:          { title: 'REPORTING CENTER',   subtitle: 'Report registry and document management' },
   team:             { title: 'TEAM',               subtitle: 'Operators & Assignment' },
@@ -4849,6 +4939,7 @@ export default function App() {
   const [page, setPage] = useState('dashboard')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [selectedClientId, setSelectedClientId] = useState(null)
+  const [selectedEngId, setSelectedEngId] = useState(null)
   const [reports, setReports] = useState(REPORTS)
   const [darkMode, setDarkMode] = useState(true)
   const [userPresence, setUserPresence] = useState('online')
@@ -5180,6 +5271,8 @@ export default function App() {
 
   const handleClientClick = useCallback((id) => { setSelectedClientId(id); setPage('client-detail') }, [])
   const handleBackToClients = useCallback(() => { setSelectedClientId(null); setPage('client-manager') }, [])
+  const handleEngDetailClick = useCallback((id) => { setSelectedEngId(id); setPage('eng-detail') }, [])
+  const handleBackToEngagements = useCallback(() => { setSelectedEngId(null); setPage('engagements') }, [])
 
   const allEngagements = useMemo(() => [
     ...ENGAGEMENTS.map(e => engStatusOverrides[e.id] ? { ...e, status: engStatusOverrides[e.id] } : e),
@@ -5206,8 +5299,8 @@ export default function App() {
 
       <div className="flex-1 flex flex-col overflow-hidden">
         <TopBar
-          title={page === 'client-detail' ? 'CLIENT DETAIL' : titleInfo.title}
-          subtitle={page === 'client-detail' ? selectedClientId : titleInfo.subtitle}
+          title={page === 'client-detail' ? 'CLIENT DETAIL' : page === 'eng-detail' ? 'ENGAGEMENT DETAIL' : titleInfo.title}
+          subtitle={page === 'client-detail' ? selectedClientId : page === 'eng-detail' ? selectedEngId : titleInfo.subtitle}
           currentUser={currentUser} assignments={assignments} clients={clients}
           engagements={allEngagements} findings={allFindings}
           activeTimer={activeTimer} onClockIn={handleClockIn} onClockOut={handleClockOut}
@@ -5223,7 +5316,8 @@ export default function App() {
           {page === 'map'              && <ClientMapPage clients={clients} darkMode={darkMode} onClientClick={handleClientClick} />}
           {page === 'client-detail'    && selectedClientId && <ClientDetail clientId={selectedClientId} onBack={handleBackToClients} clients={clients} tipsLang={tipsLang} onNav={handleNav} />}
           {page === 'findings'         && <FindingsTracker currentUser={currentUser} assignments={assignments} findings={allFindings} onAddFinding={handleAddFinding} onEditFinding={handleEditFinding} onDeleteFinding={handleDeleteFinding} clients={clients} teamMembers={teamMembers} engagements={allEngagements} onSendReminder={handleSendReminder} defaultSeverity={pageOpts.severity} defaultStatus={pageOpts.status} defaultClientId={pageOpts.clientId || 'All'} defaultFindingId={pageOpts.findingId || null} tipsLang={tipsLang} />}
-          {page === 'engagements'      && <EngagementPlanner teamMembers={teamMembers} assignments={assignments} onAssign={handleAssign} currentUser={currentUser} groups={engagementGroups} engagements={allEngagements} onAddEngagement={handleAddEngagement} onStatusChange={handleEngStatusChange} clients={clients} defaultStatus={pageOpts.status} defaultClientId={pageOpts.clientId || null} tipsLang={tipsLang} pendingReports={pendingReports} onSetPendingReport={handleSetPendingReport} />}
+          {page === 'engagements'      && <EngagementPlanner teamMembers={teamMembers} assignments={assignments} onAssign={handleAssign} currentUser={currentUser} groups={engagementGroups} engagements={allEngagements} onAddEngagement={handleAddEngagement} onStatusChange={handleEngStatusChange} clients={clients} defaultStatus={pageOpts.status} defaultClientId={pageOpts.clientId || null} tipsLang={tipsLang} pendingReports={pendingReports} onEngDetail={handleEngDetailClick} />}
+          {page === 'eng-detail'       && selectedEngId && <EngagementDetail engagementId={selectedEngId} onBack={handleBackToEngagements} clients={clients} teamMembers={teamMembers} assignments={assignments} engagements={allEngagements} pendingReports={pendingReports} onSetPendingReport={handleSetPendingReport} />}
           {page === 'eng-groups'       && <EngagementGroupsPage groups={engagementGroups} onAdd={handleAddGroup} onEdit={handleEditGroup} onDelete={handleDeleteGroup} teamMembers={teamMembers} currentUser={currentUser} />}
           {page === 'reports'          && <ReportingCenter reports={reports} onStatusChange={handleReportStatusChange} onAdd={handleAddReport} currentUser={currentUser} assignments={assignments} onAuditLog={handleAuditLogDownload} tipsLang={tipsLang} />}
           {page === 'team'             && <TeamPage members={teamMembers} currentUser={currentUser} onAdd={handleAddMember} onRemove={handleRemoveMember} assignments={assignments} engagements={allEngagements} userPresence={userPresence} timeEntries={timeEntries} onAuditLog={handleAuditLogDownload} />}
