@@ -2545,6 +2545,7 @@ function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, curre
           assigned={assignments[assignModal.id] || []}
           onSave={onAssign}
           onClose={() => setAssignModal(null)}
+          groups={groups}
         />
       )}
 
@@ -3711,13 +3712,21 @@ function AddEditMemberModal({ member = null, onAdd, onEdit, onClose }) {
   )
 }
 
-function AssignTeamModal({ engagement, teamMembers, assigned, onSave, onClose }) {
+function AssignTeamModal({ engagement, teamMembers, assigned, onSave, onClose, groups = [] }) {
   const [selected, setSelected] = useState(new Set(assigned))
   const client = CLIENTS.find(c => c.id === engagement.clientId)
 
   const toggle = (id) => setSelected(prev => {
     const next = new Set(prev)
     next.has(id) ? next.delete(id) : next.add(id)
+    return next
+  })
+
+  const applyGroup = (group) => setSelected(prev => {
+    const next = new Set(prev)
+    const allIn = group.memberIds.every(id => next.has(id))
+    if (allIn) group.memberIds.forEach(id => next.delete(id))
+    else group.memberIds.forEach(id => next.add(id))
     return next
   })
 
@@ -3731,7 +3740,30 @@ function AssignTeamModal({ engagement, teamMembers, assigned, onSave, onClose })
           </div>
           <button onClick={onClose} className="p-1.5 rounded text-slate-500 hover:text-slate-200 hover:bg-slate-800 transition-all"><X size={14} /></button>
         </div>
-        <div className="p-4 space-y-2 max-h-72 overflow-y-auto">
+
+        {groups.length > 0 && (
+          <div className="px-4 pt-3 pb-2 border-b border-[#1e293b]">
+            <div className="text-[10px] font-mono text-slate-600 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+              <Layers size={9} /> Aus Gruppe wählen
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {groups.map(group => {
+                const gc = GROUP_COLORS[group.color] || GROUP_COLORS.cyan
+                const allIn = group.memberIds.every(id => selected.has(id))
+                return (
+                  <button key={group.id} onClick={() => applyGroup(group)}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded border text-[10px] font-mono transition-all ${allIn ? `${gc.text} border-current/40 bg-current/10` : 'border-[#1e293b] text-slate-500 hover:text-slate-300 hover:border-slate-600'}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${gc.dot}`} />
+                    {group.name}
+                    <span className="opacity-50">({group.memberIds.length})</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        <div className="p-4 space-y-2 max-h-64 overflow-y-auto">
           {teamMembers.filter(m => m.status === 'Active').map(member => {
             const isSel = selected.has(member.id)
             return (
@@ -3752,7 +3784,7 @@ function AssignTeamModal({ engagement, teamMembers, assigned, onSave, onClose })
         <div className="px-4 pb-4 flex gap-2">
           <button onClick={() => { onSave(engagement.id, [...selected]); onClose() }}
             className="flex-1 py-2 rounded bg-cyan-500 hover:bg-cyan-400 text-black font-mono font-bold text-xs tracking-wider transition-all">
-            Speichern
+            Speichern ({selected.size})
           </button>
           <button onClick={onClose}
             className="flex-1 py-2 rounded border border-[#1e293b] text-slate-500 font-mono text-xs hover:text-slate-300 transition-all">
