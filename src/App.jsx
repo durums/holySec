@@ -2404,12 +2404,13 @@ function NewEngagementModal({ clients = CLIENTS, currentUser, onSave, onClose })
   )
 }
 
-function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, currentUser, groups = [], engagements: allEngProp = ENGAGEMENTS, onAddEngagement, onStatusChange, clients: allClientsProp = CLIENTS, defaultStatus = 'All', defaultClientId = null, tipsLang = 'de' }) {
+function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, currentUser, groups = [], engagements: allEngProp = ENGAGEMENTS, onAddEngagement, onStatusChange, clients: allClientsProp = CLIENTS, defaultStatus = 'All', defaultClientId = null, tipsLang = 'de', pendingReports = {}, onSetPendingReport }) {
   const ENG_STATUS_CYCLE = { Planned: 'Active', Active: 'On Hold', 'On Hold': 'Completed', Completed: 'Planned' }
   const canCycleStatus = currentUser?.role === 'Admin' || currentUser?.role === 'Senior Pentester'
   const [view, setView] = useState('timeline')
   const [selectedEng, setSelectedEng] = useState(null)
   const [assignModal, setAssignModal] = useState(null)
+  const [detailModal, setDetailModal] = useState(null)
   const [statusFilter, setStatusFilter] = useState(defaultStatus)
   const [myOnly, setMyOnly] = useState(false)
   const [showNewModal, setShowNewModal] = useState(false)
@@ -2537,13 +2538,20 @@ function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, curre
                         )
                       })}
                     </div>
-                    {currentUser?.role === 'Admin' && (
+                    <div className="flex items-center gap-1">
+                      {currentUser?.role === 'Admin' && (
+                        <button
+                          onClick={e => { e.stopPropagation(); setAssignModal(eng) }}
+                          className="flex items-center gap-1 px-2 py-0.5 rounded border border-[#1e293b] text-[9px] font-mono text-slate-600 hover:text-cyan-400 hover:border-cyan-500/40 transition-all">
+                          <Users2 size={9} /> Zuweisen
+                        </button>
+                      )}
                       <button
-                        onClick={e => { e.stopPropagation(); setAssignModal(eng) }}
-                        className="flex items-center gap-1 px-2 py-0.5 rounded border border-[#1e293b] text-[9px] font-mono text-slate-600 hover:text-cyan-400 hover:border-cyan-500/40 transition-all">
-                        <Users2 size={9} /> Zuweisen
+                        onClick={e => { e.stopPropagation(); setDetailModal(eng) }}
+                        className={`flex items-center gap-1 px-2 py-0.5 rounded border text-[9px] font-mono transition-all ${pendingReports[eng.id] ? 'border-yellow-500/40 text-yellow-400 hover:bg-yellow-500/10' : 'border-[#1e293b] text-slate-600 hover:text-slate-300 hover:border-slate-600'}`}>
+                        <FileText size={9} /> Details
                       </button>
-                    )}
+                    </div>
                   </div>
 
                   {selectedEng?.id === eng.id && (
@@ -2571,13 +2579,24 @@ function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, curre
         />
       )}
 
+      {detailModal && (
+        <EngagementDetailModal
+          engagement={detailModal}
+          client={allClientsProp.find(c => c.id === detailModal.clientId)}
+          assignedMembers={(assignments[detailModal.id] || []).map(uid => teamMembers.find(t => t.id === uid)).filter(Boolean)}
+          pendingReport={pendingReports[detailModal.id] || null}
+          onSavePendingReport={onSetPendingReport}
+          onClose={() => setDetailModal(null)}
+        />
+      )}
+
       {view === 'list' && (
         <Panel>
           <PanelHeader title="All Engagements" subtitle={`${sorted.length} von ${scopeEngagements.length}`} info={TIPS[tipsLang].engList} />
           <table className="w-full text-xs font-mono">
             <thead>
               <tr className="border-b border-[#1e293b]">
-                {['Engagement', 'Client', 'Type', 'Start', 'End', 'Status', 'Phases', 'Team'].map(h => (
+                {['Engagement', 'Client', 'Type', 'Start', 'End', 'Status', 'Phases', 'Team', ''].map(h => (
                   <th key={h} className="px-4 py-3 text-left text-[10px] text-slate-600 uppercase tracking-wider font-normal">{h}</th>
                 ))}
               </tr>
@@ -2612,6 +2631,13 @@ function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, curre
                           return m ? <div key={uid} className="ring-1 ring-[#0a0a0a] rounded-full"><MemberAvatar member={m} /></div> : null
                         })}
                       </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <button
+                        onClick={() => setDetailModal(eng)}
+                        className={`flex items-center gap-1 px-2 py-0.5 rounded border text-[9px] font-mono transition-all ${pendingReports[eng.id] ? 'border-yellow-500/40 text-yellow-400 hover:bg-yellow-500/10' : 'border-[#1e293b] text-slate-600 hover:text-slate-300 hover:border-slate-600'}`}>
+                        <FileText size={9} /> Details
+                      </button>
                     </td>
                   </tr>
                 )
@@ -3818,6 +3844,186 @@ function AssignTeamModal({ engagement, teamMembers, assigned, onSave, onClose, g
   )
 }
 
+function EngagementDetailModal({ engagement, client, assignedMembers = [], pendingReport, onSavePendingReport, onClose }) {
+  const [reportForm, setReportForm] = useState(pendingReport || { title: '', type: 'Technical Report' })
+  const hasPending = !!(pendingReport?.title)
+
+  return (
+    <div className="fixed inset-0 bg-black/75 z-50 flex items-center justify-center p-6" onClick={onClose}>
+      <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[#1e293b] sticky top-0 bg-[#0f172a] z-10">
+          <div>
+            <h2 className="text-sm font-mono font-bold text-slate-100">{engagement.title}</h2>
+            <p className="text-[10px] font-mono text-slate-500 mt-0.5">{client?.name} — {engagement.type}</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <StatusBadge status={engagement.status} />
+            <button onClick={onClose} className="p-1.5 rounded text-slate-500 hover:text-slate-200 hover:bg-slate-800 transition-all"><X size={14} /></button>
+          </div>
+        </div>
+
+        <div className="p-6 space-y-5">
+          {/* Engagement Details */}
+          <div>
+            <div className="text-[10px] font-mono text-slate-600 uppercase tracking-widest mb-3 flex items-center gap-1.5">
+              <Calendar size={9} /> Engagement Details
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-[#0a0a0a] border border-[#1e293b] rounded-lg p-3">
+                <div className="text-[9px] font-mono text-slate-600 uppercase mb-1">Zeitraum</div>
+                <div className="text-xs font-mono text-slate-200">{engagement.start} → {engagement.end}</div>
+              </div>
+              <div className="bg-[#0a0a0a] border border-[#1e293b] rounded-lg p-3">
+                <div className="text-[9px] font-mono text-slate-600 uppercase mb-1">Lead</div>
+                <div className="text-xs font-mono text-slate-200">{engagement.lead}</div>
+              </div>
+              <div className="bg-[#0a0a0a] border border-[#1e293b] rounded-lg p-3 col-span-2">
+                <div className="text-[9px] font-mono text-slate-600 uppercase mb-2">Phasen</div>
+                <div className="flex gap-1.5">
+                  {['Recon', 'Scanning', 'Exploitation', 'Reporting'].map(phase => {
+                    const active = engagement.phases?.includes(phase)
+                    const cfg = PHASE_COLORS[phase]
+                    return (
+                      <span key={phase} className={`px-2 py-0.5 rounded text-[9px] font-mono border ${active ? `${cfg.text} ${cfg.border}` : 'text-slate-700 border-transparent bg-slate-900'}`}>{phase}</span>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Team */}
+          {assignedMembers.length > 0 && (
+            <div>
+              <div className="text-[10px] font-mono text-slate-600 uppercase tracking-widest mb-3 flex items-center gap-1.5">
+                <Users2 size={9} /> Zugewiesenes Team
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {assignedMembers.map(m => (
+                  <div key={m.id} className="flex items-center gap-2 bg-[#0a0a0a] border border-[#1e293b] rounded-lg px-3 py-1.5">
+                    <MemberAvatar member={m} />
+                    <div>
+                      <div className="text-xs font-mono text-slate-200">{m.name}</div>
+                      <div className="text-[9px] font-mono text-slate-500">{m.role}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Client Info */}
+          {client && (
+            <div>
+              <div className="text-[10px] font-mono text-slate-600 uppercase tracking-widest mb-3 flex items-center gap-1.5">
+                <Building2 size={9} /> Client-Informationen
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-[#0a0a0a] border border-[#1e293b] rounded-lg p-3">
+                  <div className="text-[9px] font-mono text-slate-600 uppercase mb-2">Kontakt</div>
+                  <div className="text-xs font-mono text-slate-200 mb-0.5">{client.contact?.name}</div>
+                  <div className="text-[10px] font-mono text-slate-500">{client.contact?.email}</div>
+                  <div className="text-[10px] font-mono text-slate-500">{client.contact?.phone}</div>
+                </div>
+                <div className="bg-[#0a0a0a] border border-[#1e293b] rounded-lg p-3">
+                  <div className="text-[9px] font-mono text-slate-600 uppercase mb-2">Vertrag</div>
+                  <div className="text-[10px] font-mono text-slate-400 mb-1">{client.contract?.start} → {client.contract?.end}</div>
+                  <div className="flex justify-between text-[9px] font-mono text-slate-600 mb-1">
+                    <span>Stunden</span>
+                    <span className={client.contract?.used / client.contract?.hours > 0.85 ? 'text-red-400' : 'text-slate-400'}>
+                      {client.contract?.used} / {client.contract?.hours}h
+                    </span>
+                  </div>
+                  <div className="h-1 rounded-full bg-slate-800">
+                    <div className={`h-1 rounded-full ${client.contract?.used / client.contract?.hours > 0.85 ? 'bg-red-500' : 'bg-cyan-500'}`}
+                      style={{ width: `${Math.min(100, (client.contract?.used / client.contract?.hours) * 100)}%` }} />
+                  </div>
+                </div>
+                {client.scope && (
+                  <div className="bg-[#0a0a0a] border border-[#1e293b] rounded-lg p-3 col-span-2">
+                    <div className="text-[9px] font-mono text-slate-600 uppercase mb-2">Scope</div>
+                    {client.scope.ipRanges?.length > 0 && (
+                      <div className="mb-2">
+                        <div className="text-[9px] font-mono text-slate-600 mb-1">IP-Ranges</div>
+                        <div className="flex flex-wrap gap-1">
+                          {client.scope.ipRanges.map((r, i) => <span key={i} className="px-1.5 py-0.5 rounded bg-slate-800 text-[9px] font-mono text-cyan-400">{r}</span>)}
+                        </div>
+                      </div>
+                    )}
+                    {client.scope.domains?.length > 0 && (
+                      <div className="mb-2">
+                        <div className="text-[9px] font-mono text-slate-600 mb-1">Domains</div>
+                        <div className="flex flex-wrap gap-1">
+                          {client.scope.domains.map((d, i) => <span key={i} className="px-1.5 py-0.5 rounded bg-slate-800 text-[9px] font-mono text-slate-300">{d}</span>)}
+                        </div>
+                      </div>
+                    )}
+                    {client.scope.exclusions?.length > 0 && (
+                      <div>
+                        <div className="text-[9px] font-mono text-slate-600 mb-1">Ausschlüsse</div>
+                        <div className="flex flex-wrap gap-1">
+                          {client.scope.exclusions.map((ex, i) => <span key={i} className="px-1.5 py-0.5 rounded bg-red-900/20 border border-red-900/30 text-[9px] font-mono text-red-400">{ex}</span>)}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Report staging */}
+          <div>
+            <div className="text-[10px] font-mono text-slate-600 uppercase tracking-widest mb-3 flex items-center gap-2">
+              <FileText size={9} /> Report
+              {hasPending && <span className="px-1.5 py-0.5 rounded bg-yellow-400/10 border border-yellow-400/20 text-[9px] font-mono text-yellow-400">Ausstehend</span>}
+            </div>
+            <div className="bg-[#0a0a0a] border border-[#1e293b] rounded-lg p-4 space-y-3">
+              <p className="text-[10px] font-mono text-slate-500">Wird automatisch in "Reports" veröffentlicht, sobald das Engagement auf Completed gesetzt wird.</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[9px] font-mono text-slate-600 uppercase mb-1 block">Titel</label>
+                  <input
+                    value={reportForm.title}
+                    onChange={e => setReportForm(f => ({ ...f, title: e.target.value }))}
+                    placeholder="z.B. Technical Report Q2 2026"
+                    className="w-full bg-[#0f172a] border border-[#1e293b] rounded px-3 py-2 text-xs font-mono text-slate-200 placeholder-slate-700 focus:outline-none focus:border-cyan-500/50"
+                  />
+                </div>
+                <div>
+                  <label className="text-[9px] font-mono text-slate-600 uppercase mb-1 block">Typ</label>
+                  <select
+                    value={reportForm.type}
+                    onChange={e => setReportForm(f => ({ ...f, type: e.target.value }))}
+                    className="w-full bg-[#0f172a] border border-[#1e293b] rounded px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500/50">
+                    <option>Technical Report</option>
+                    <option>Executive Summary</option>
+                    <option>Remediation Plan</option>
+                  </select>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { if (reportForm.title.trim()) { onSavePendingReport(engagement.id, reportForm); onClose() } }}
+                  disabled={!reportForm.title.trim()}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-cyan-500/40 bg-cyan-500/10 text-xs font-mono text-cyan-400 hover:bg-cyan-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-all">
+                  <FileText size={11} /> Speichern
+                </button>
+                {hasPending && (
+                  <button onClick={() => { onSavePendingReport(engagement.id, null); setReportForm({ title: '', type: 'Technical Report' }) }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-red-500/30 bg-red-500/5 text-xs font-mono text-red-400 hover:bg-red-500/10 transition-all">
+                    <X size={11} /> Verwerfen
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 const ROLE_BADGE = {
   'Admin':            'text-cyan-400 bg-cyan-400/10 border-cyan-400/20',
   'Senior Pentester': 'text-orange-400 bg-orange-400/10 border-orange-400/20',
@@ -4672,6 +4878,9 @@ export default function App() {
   const [uiLang, setUiLang] = useState(() => localStorage.getItem('holysec_ui_lang') || 'en')
   const [tipsLang, setTipsLang] = useState(() => localStorage.getItem('holysec_tips_lang') || 'de')
   const [engStatusOverrides, setEngStatusOverrides] = useState({})
+  const [pendingReports, setPendingReports] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('holysec_pending_reports') || '{}') } catch { return {} }
+  })
   const sessionIpRef = useRef('–')
   const currentUserRef = useRef(null)
 
@@ -4730,6 +4939,7 @@ export default function App() {
 
   useEffect(() => { localStorage.setItem('holysec_ui_lang', uiLang) }, [uiLang])
   useEffect(() => { localStorage.setItem('holysec_tips_lang', tipsLang) }, [tipsLang])
+  useEffect(() => { localStorage.setItem('holysec_pending_reports', JSON.stringify(pendingReports)) }, [pendingReports])
 
   useEffect(() => {
     localStorage.setItem('holysec_time_entries', JSON.stringify(timeEntries))
@@ -4882,14 +5092,48 @@ export default function App() {
     logEvent('ENGAGEMENT_ERSTELLT', `"${eng.title}" [${eng.type}] — ${eng.status}`, 'engagements')
   }, [logEvent])
 
+  const handleSetPendingReport = useCallback((engId, report) => {
+    setPendingReports(prev => {
+      if (report === null) {
+        const next = { ...prev }
+        delete next[engId]
+        return next
+      }
+      return { ...prev, [engId]: report }
+    })
+  }, [])
+
   const handleEngStatusChange = useCallback((id) => {
     const cycle = { Planned: 'Active', Active: 'On Hold', 'On Hold': 'Completed', Completed: 'Planned' }
+    const autoPublish = (engTitle, next) => {
+      if (next === 'Completed') {
+        setPendingReports(prev => {
+          const pr = prev[id]
+          if (!pr?.title) return prev
+          const report = {
+            id: `r${Date.now()}`,
+            clientId: (customEngagements.find(e => e.id === id) || ENGAGEMENTS.find(e => e.id === id))?.clientId,
+            engagementId: id,
+            title: pr.title,
+            type: pr.type,
+            date: new Date().toISOString().split('T')[0],
+            status: 'Draft',
+          }
+          setReports(rs => [...rs, report])
+          logEvent('REPORT_ERSTELLT', `"${pr.title}" [${pr.type}] — auto-publiziert`, 'reports')
+          const next2 = { ...prev }
+          delete next2[id]
+          return next2
+        })
+      }
+    }
     const isCustom = customEngagements.some(e => e.id === id)
     if (isCustom) {
       setCustomEngagements(prev => prev.map(e => {
         if (e.id !== id) return e
         const next = cycle[e.status] || e.status
         logEvent('ENGAGEMENT_STATUS', `"${e.title}" → ${next}`, 'engagements')
+        autoPublish(e.title, next)
         return { ...e, status: next }
       }))
     } else {
@@ -4898,6 +5142,7 @@ export default function App() {
       const currentStatus = engStatusOverrides[id] || staticEng.status
       const next = cycle[currentStatus] || currentStatus
       logEvent('ENGAGEMENT_STATUS', `"${staticEng.title}" → ${next}`, 'engagements')
+      autoPublish(staticEng.title, next)
       setEngStatusOverrides(prev => ({ ...prev, [id]: next }))
     }
   }, [customEngagements, engStatusOverrides, logEvent])
@@ -4978,7 +5223,7 @@ export default function App() {
           {page === 'map'              && <ClientMapPage clients={clients} darkMode={darkMode} onClientClick={handleClientClick} />}
           {page === 'client-detail'    && selectedClientId && <ClientDetail clientId={selectedClientId} onBack={handleBackToClients} clients={clients} tipsLang={tipsLang} onNav={handleNav} />}
           {page === 'findings'         && <FindingsTracker currentUser={currentUser} assignments={assignments} findings={allFindings} onAddFinding={handleAddFinding} onEditFinding={handleEditFinding} onDeleteFinding={handleDeleteFinding} clients={clients} teamMembers={teamMembers} engagements={allEngagements} onSendReminder={handleSendReminder} defaultSeverity={pageOpts.severity} defaultStatus={pageOpts.status} defaultClientId={pageOpts.clientId || 'All'} defaultFindingId={pageOpts.findingId || null} tipsLang={tipsLang} />}
-          {page === 'engagements'      && <EngagementPlanner teamMembers={teamMembers} assignments={assignments} onAssign={handleAssign} currentUser={currentUser} groups={engagementGroups} engagements={allEngagements} onAddEngagement={handleAddEngagement} onStatusChange={handleEngStatusChange} clients={clients} defaultStatus={pageOpts.status} defaultClientId={pageOpts.clientId || null} tipsLang={tipsLang} />}
+          {page === 'engagements'      && <EngagementPlanner teamMembers={teamMembers} assignments={assignments} onAssign={handleAssign} currentUser={currentUser} groups={engagementGroups} engagements={allEngagements} onAddEngagement={handleAddEngagement} onStatusChange={handleEngStatusChange} clients={clients} defaultStatus={pageOpts.status} defaultClientId={pageOpts.clientId || null} tipsLang={tipsLang} pendingReports={pendingReports} onSetPendingReport={handleSetPendingReport} />}
           {page === 'eng-groups'       && <EngagementGroupsPage groups={engagementGroups} onAdd={handleAddGroup} onEdit={handleEditGroup} onDelete={handleDeleteGroup} teamMembers={teamMembers} currentUser={currentUser} />}
           {page === 'reports'          && <ReportingCenter reports={reports} onStatusChange={handleReportStatusChange} onAdd={handleAddReport} currentUser={currentUser} assignments={assignments} onAuditLog={handleAuditLogDownload} tipsLang={tipsLang} />}
           {page === 'team'             && <TeamPage members={teamMembers} currentUser={currentUser} onAdd={handleAddMember} onRemove={handleRemoveMember} assignments={assignments} engagements={allEngagements} userPresence={userPresence} timeEntries={timeEntries} onAuditLog={handleAuditLogDownload} />}
