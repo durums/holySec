@@ -9,7 +9,7 @@ import {
   ChevronUp, ExternalLink, Plus, Search, Bell, Menu, Crown,
   Users2, UserPlus, LogOut, Trash2, KeyRound, Edit3, StopCircle, PlayCircle, Timer, ClipboardList, Layers, Moon, Sun, Map
 } from 'lucide-react'
-import { MapContainer, TileLayer, CircleMarker, Popup } from 'react-leaflet'
+import * as L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -23,19 +23,29 @@ import {
 
 // ─── CONSTANTS ───────────────────────────────────────────────────────────────
 
-const NAV_ITEMS = [
-  { id: 'dashboard',      label: 'Dashboard',      icon: LayoutDashboard },
-  { id: 'client-radar',   label: 'Client Radar',   icon: Activity },
-  { id: 'client-manager', label: 'Client Manager', icon: Building2 },
-  { id: 'map',            label: 'Map',            icon: Map },
-  { id: 'findings',       label: 'Findings',       icon: ShieldAlert },
-  { id: 'engagements',    label: 'Engagements',    icon: Calendar },
-  { id: 'eng-groups',     label: 'Eng. Groups',    icon: Layers, roles: ['Admin', 'Senior Pentester'] },
-  { id: 'reports',        label: 'Reports',        icon: FileText },
-  { id: 'team',           label: 'Team',           icon: Users2 },
-  { id: 'audit',          label: 'Audit Log',      icon: ClipboardList, roles: ['Admin'] },
-  { id: 'about',          label: 'About HolySec',  icon: Crown },
-  { id: 'settings',       label: 'Settings',       icon: Settings },
+const NAV_GROUPS = [
+  { id: 'dashboard', label: 'Dashboard',      icon: LayoutDashboard, standalone: true },
+  {
+    id: 'clients', label: 'Clients', icon: Building2,
+    items: [
+      { id: 'client-radar',   label: 'Client Radar',   icon: Activity },
+      { id: 'client-manager', label: 'Client Manager', icon: Building2 },
+      { id: 'map',            label: 'Client Map',     icon: Map },
+    ],
+  },
+  {
+    id: 'assessments', label: 'Assessments', icon: Target,
+    items: [
+      { id: 'findings',    label: 'Findings',    icon: ShieldAlert },
+      { id: 'engagements', label: 'Engagements', icon: Calendar },
+      { id: 'eng-groups',  label: 'Eng. Groups', icon: Layers, roles: ['Admin', 'Senior Pentester'] },
+      { id: 'reports',     label: 'Reports',     icon: FileText },
+    ],
+  },
+  { id: 'team',     label: 'Team',          icon: Users2,       standalone: true },
+  { id: 'audit',    label: 'Audit Log',     icon: ClipboardList, standalone: true, roles: ['Admin'] },
+  { id: 'about',    label: 'About HolySec', icon: Crown,        standalone: true },
+  { id: 'settings', label: 'Settings',      icon: Settings,     standalone: true },
 ]
 
 const GROUP_COLORS = {
@@ -74,6 +84,74 @@ const SCOPE_ICONS = {
   'Network': Network,
   'Social Engineering': UserCheck,
   'Full Red Team': Sword,
+}
+
+const NAV_LABELS = {
+  en: {
+    dashboard: 'Dashboard', clients: 'Clients', 'client-radar': 'Client Radar',
+    'client-manager': 'Client Manager', map: 'Client Map', assessments: 'Assessments',
+    findings: 'Findings', engagements: 'Engagements', 'eng-groups': 'Eng. Groups',
+    reports: 'Reports', team: 'Team', audit: 'Audit Log', about: 'About HolySec', settings: 'Settings',
+  },
+  de: {
+    dashboard: 'Dashboard', clients: 'Clients', 'client-radar': 'Client-Radar',
+    'client-manager': 'Client-Verwaltung', map: 'Client-Karte', assessments: 'Tests',
+    findings: 'Schwachstellen', engagements: 'Projekte', 'eng-groups': 'Gruppen',
+    reports: 'Berichte', team: 'Team', audit: 'Aktivitätslog', about: 'Über HolySec', settings: 'Einstellungen',
+  },
+}
+
+const TIPS = {
+  de: {
+    activeClients:      "Anzahl der Clients mit Status 'Active' — laufende Verträge und aktive Engagements.",
+    openCriticals:      "CVSS ≥ 9.0 Findings mit Status 'Open' über alle Clients — erfordern sofortige Maßnahmen.",
+    openFindings:       "Alle Vulnerabilities mit Status 'Open' über alle Clients und Engagements hinweg.",
+    plannedTests:       "Engagements mit Status 'Planned' — noch nicht gestartete Pentests im aktuellen Quartal.",
+    engPerMonth:        "Anzahl abgeschlossener und geplanter Engagements pro Monat über die letzten 12 Monate.",
+    findingsBySev:      "Verteilung aller Findings nach Schweregrad (CRITICAL, HIGH, MEDIUM, LOW) über alle Clients.",
+    cvssDistrib:        "Häufigkeitsverteilung der CVSS-Scores aller Findings. Zeigt wo sich die Schwachstellen im Scoring-Spektrum konzentrieren.",
+    recentCritical:     "Die neuesten Findings mit Schweregrad CRITICAL (CVSS ≥ 9.0) — sortiert nach Datum, mit aktuellem Behebungsstatus.",
+    clientOverview:     "Alle verwalteten Clients mit Status, Kritikalität und nächstem Testtermin. Klicken für Detailansicht.",
+    clientList:         "Verwaltungsübersicht aller Clients. Zeigt Kontaktinfos, Vertragsstatus, offene Findings, Engagements und den Report-Bestand nach Typ (TR = Technical Report, ES = Executive Summary, RP = Remediation Plan).",
+    clientOpenFindings: "Alle Findings mit Status 'Open' für diesen Client — inkl. kritischer Befunde die sofortige Maßnahmen erfordern.",
+    clientClosed:       "Findings die erfolgreich behoben und verifiziert wurden.",
+    clientBudget:       "Verbleibende Vertragsstunden. Bei > 85% Verbrauch wird der Wert rot — Nachverhandlung empfohlen.",
+    clientContractEnd:  "Verbleibende Tage bis Vertragsende. Unter 30 Tagen wird eine Verlängerung empfohlen.",
+    vulnDB:             "Alle erfassten Schwachstellen aus aktiven und abgeschlossenen Engagements. Zeigt CVSS-Score, Schweregrad, CVE-Referenz und aktuellen Behebungsstatus. Klicke auf einen Eintrag zum Aufklappen oder um den Status weiterzuschalten.",
+    engTimeline:        "Zeitliche Darstellung aller Engagements als Gantt-Diagramm. Zeigt Laufzeit und Status auf einen Blick — hilfreich für Ressourcenplanung und Terminüberschneidungen.",
+    engList:            "Liste aller Pentest-Engagements mit Status, Zeitraum und zugewiesenen Operatoren. Über das Zuweisungs-Menü (→) können Mitarbeiter einem Engagement zugeteilt werden.",
+    radarActive:        "Clients mit Status 'Active' — laufender Vertrag, Engagements werden aktuell durchgeführt oder sind aktiv geplant.",
+    radarOnHold:        "Clients mit Status 'On Hold' — der Pentest-Prozess ist vorübergehend pausiert, z.B. wegen laufender Patches, Freeze-Phasen oder Kundenwunsch.",
+    radarCritical:      "Clients mit Kritikalitätsstufe 'CRITICAL' (CVSS ≥ 9.0 Findings offen oder sehr hohe Angriffsexponierung) — höchste Handlungspriorität.",
+    radarDue:           "Clients, bei denen der nächste geplante Pentest in 30 Tagen oder weniger stattfindet — zur rechtzeitigen Vorbereitung und Ressourcenplanung.",
+    reportRegistry:     "Alle erstellten Reports nach Client und Engagement. Typen: Technical Report (detaillierter Befundbericht), Executive Summary (Kurzfassung für Management), Remediation Plan (Maßnahmenplan). Status per Klick weiterschalten: Draft → Delivered → Final.",
+    auditLog:           "Vollständiges Aktivitätsprotokoll aller Benutzeraktionen. Zeigt Login-Zeiten, IP-Adressen, Datenänderungen und Downloads in Echtzeit.",
+  },
+  en: {
+    activeClients:      "Number of clients with status 'Active' — ongoing contracts and active engagements.",
+    openCriticals:      "CVSS ≥ 9.0 findings with status 'Open' across all clients — require immediate action.",
+    openFindings:       "All vulnerabilities with status 'Open' across all clients and engagements.",
+    plannedTests:       "Engagements with status 'Planned' — pentests not yet started in the current quarter.",
+    engPerMonth:        "Number of completed and planned engagements per month over the last 12 months.",
+    findingsBySev:      "Distribution of all findings by severity (CRITICAL, HIGH, MEDIUM, LOW) across all clients.",
+    cvssDistrib:        "Frequency distribution of CVSS scores for all findings. Shows where vulnerabilities cluster in the scoring spectrum.",
+    recentCritical:     "Latest findings with severity CRITICAL (CVSS ≥ 9.0) — sorted by date, with current remediation status.",
+    clientOverview:     "All managed clients with status, criticality, and next test date. Click for detail view.",
+    clientList:         "Management overview of all clients. Shows contact info, contract status, open findings, engagements, and report inventory by type (TR = Technical Report, ES = Executive Summary, RP = Remediation Plan).",
+    clientOpenFindings: "All findings with status 'Open' for this client — including critical findings requiring immediate action.",
+    clientClosed:       "Findings that have been successfully remediated and verified.",
+    clientBudget:       "Remaining contract hours. Above 85% utilization the value turns red — renegotiation recommended.",
+    clientContractEnd:  "Days remaining until contract end. Under 30 days, an extension is recommended.",
+    vulnDB:             "All recorded vulnerabilities from active and completed engagements. Shows CVSS score, severity, CVE reference, and current remediation status. Click an entry to expand or cycle its status.",
+    engTimeline:        "Timeline view of all engagements as a Gantt chart. Shows duration and status at a glance — useful for resource planning and scheduling conflicts.",
+    engList:            "List of all pentest engagements with status, timeframe, and assigned operators. Use the assignment menu (→) to assign team members to an engagement.",
+    radarActive:        "Clients with status 'Active' — active contract, engagements currently being executed or actively planned.",
+    radarOnHold:        "Clients with status 'On Hold' — the pentest process is temporarily paused, e.g. due to ongoing patches, freeze phases, or client request.",
+    radarCritical:      "Clients with criticality level 'CRITICAL' (CVSS ≥ 9.0 findings open or very high attack exposure) — highest action priority.",
+    radarDue:           "Clients whose next scheduled pentest is in 30 days or less — for timely preparation and resource planning.",
+    reportRegistry:     "All created reports by client and engagement. Types: Technical Report (detailed finding report), Executive Summary (management brief), Remediation Plan (action plan). Click status to cycle: Draft → Delivered → Final.",
+    auditLog:           "Complete activity log of all user actions. Shows login times, IP addresses, data changes, and downloads in real time.",
+  },
 }
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
@@ -658,7 +736,51 @@ function LoginPage({ onLogin, darkMode, onToggleDark, usersAuth = USERS_AUTH }) 
 
 // ─── SIDEBAR ─────────────────────────────────────────────────────────────────
 
-function Sidebar({ active, onNav, collapsed, onToggle, currentUser, onLogout }) {
+function Sidebar({ active, onNav, collapsed, onToggle, currentUser, onLogout, uiLang = 'en' }) {
+  const activeGroup = NAV_GROUPS.find(g => !g.standalone && g.items?.some(i => i.id === active))
+
+  const [openGroups, setOpenGroups] = useState(() => {
+    const initial = new Set()
+    if (activeGroup) initial.add(activeGroup.id)
+    return initial
+  })
+
+  useEffect(() => {
+    if (activeGroup) setOpenGroups(prev => new Set([...prev, activeGroup.id]))
+  }, [active])
+
+  const toggleGroup = (groupId) => {
+    setOpenGroups(prev => {
+      const next = new Set(prev)
+      if (next.has(groupId)) next.delete(groupId)
+      else next.add(groupId)
+      return next
+    })
+  }
+
+  const renderItem = (item) => {
+    if (item.roles && !item.roles.includes(currentUser?.role)) return null
+    const isActive = active === item.id
+    const Icon = item.icon
+    const label = NAV_LABELS[uiLang]?.[item.id] || item.label
+    return (
+      <button
+        key={item.id}
+        onClick={() => onNav(item.id)}
+        title={collapsed ? label : undefined}
+        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded text-left transition-all duration-150 group
+          ${isActive
+            ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20'
+            : 'text-slate-500 hover:text-slate-200 hover:bg-slate-800/50 border border-transparent'
+          }`}
+      >
+        <Icon size={16} className={`shrink-0 ${isActive ? 'text-cyan-400' : 'text-slate-500 group-hover:text-slate-300'}`} />
+        {!collapsed && <span className="text-xs font-mono font-medium tracking-wide truncate">{label}</span>}
+        {!collapsed && isActive && <div className="ml-auto w-1 h-1 rounded-full bg-cyan-400 animate-pulse" />}
+      </button>
+    )
+  }
+
   return (
     <aside className={`flex flex-col bg-[#0a0a0a] border-r border-[#1e293b] transition-all duration-300 ${collapsed ? 'w-16' : 'w-56'} shrink-0`}>
       <div className="flex items-center justify-between px-4 py-5 border-b border-[#1e293b]">
@@ -673,27 +795,44 @@ function Sidebar({ active, onNav, collapsed, onToggle, currentUser, onLogout }) 
         </button>
       </div>
 
-      <nav className="flex-1 px-2 py-4 space-y-1">
-        {NAV_ITEMS.filter(item => !item.roles || item.roles.includes(currentUser?.role)).map(({ id, label, icon: Icon }) => {
-          const isActive = active === id
+      <nav className="flex-1 px-2 py-3 overflow-y-auto space-y-0.5">
+        {NAV_GROUPS.map(group => {
+          if (group.roles && !group.roles.includes(currentUser?.role)) return null
+
+          if (group.standalone) return renderItem(group)
+
+          const visibleItems = group.items.filter(i => !i.roles || i.roles.includes(currentUser?.role))
+          if (visibleItems.length === 0) return null
+
+          if (collapsed) return visibleItems.map(renderItem)
+
+          const isGroupActive = visibleItems.some(i => i.id === active)
+          const isOpen = openGroups.has(group.id)
+          const GroupIcon = group.icon
+
           return (
-            <button
-              key={id}
-              onClick={() => onNav(id)}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded text-left transition-all duration-150 group
-                ${isActive
-                  ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20'
-                  : 'text-slate-500 hover:text-slate-200 hover:bg-slate-800/50 border border-transparent'
-                }`}
-            >
-              <Icon size={16} className={`shrink-0 ${isActive ? 'text-cyan-400' : 'text-slate-500 group-hover:text-slate-300'}`} />
-              {!collapsed && (
-                <span className="text-xs font-mono font-medium tracking-wide truncate">{label}</span>
+            <div key={group.id} className="mt-2">
+              <button
+                onClick={() => toggleGroup(group.id)}
+                className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded transition-all duration-150
+                  ${isGroupActive ? 'text-cyan-400/80' : 'text-slate-600 hover:text-slate-400'}`}
+              >
+                <GroupIcon size={15} className="shrink-0" />
+                <span className="text-xs font-mono font-bold uppercase tracking-widest flex-1 text-left">
+                  {NAV_LABELS[uiLang]?.[group.id] || group.label}
+                </span>
+                {isOpen
+                  ? <ChevronUp size={10} className="shrink-0 opacity-60" />
+                  : <ChevronDown size={10} className="shrink-0 opacity-60" />
+                }
+              </button>
+
+              {isOpen && (
+                <div className="ml-2 mt-0.5 mb-1 pl-2.5 border-l border-[#1e293b] space-y-0.5">
+                  {visibleItems.map(renderItem)}
+                </div>
               )}
-              {!collapsed && isActive && (
-                <div className="ml-auto w-1 h-1 rounded-full bg-cyan-400 animate-pulse" />
-              )}
-            </button>
+            </div>
           )
         })}
       </nav>
@@ -724,10 +863,15 @@ function Sidebar({ active, onNav, collapsed, onToggle, currentUser, onLogout }) 
 
 // ─── TOPBAR ──────────────────────────────────────────────────────────────────
 
-function TopBar({ title, subtitle, currentUser, assignments, clients: allClients = CLIENTS, engagements: allEngagements = ENGAGEMENTS, activeTimer, onClockIn, onClockOut, userPresence, onPresenceChange, darkMode, onToggleDark }) {
+function TopBar({ title, subtitle, currentUser, assignments, clients: allClients = CLIENTS, engagements: allEngagements = ENGAGEMENTS, activeTimer, onClockIn, onClockOut, userPresence, onPresenceChange, darkMode, onToggleDark, reminders = [] }) {
   const [showNotifs, setShowNotifs] = useState(false)
   const [showPresence, setShowPresence] = useState(false)
-  const [readNotifs, setReadNotifs] = useState(new Set())
+  const [readNotifs, setReadNotifs] = useState(() => {
+    try {
+      const key = `holysec_read_notifs_${currentUser?.id || 'guest'}`
+      return new Set(JSON.parse(localStorage.getItem(key) || '[]'))
+    } catch { return new Set() }
+  })
   const [elapsed, setElapsed] = useState(0)
   const { clients: scopeClients, findings: scopeFindings, engagements: scopeEngagements } = getMyScope(currentUser, assignments, allClients)
 
@@ -740,6 +884,15 @@ function TopBar({ title, subtitle, currentUser, assignments, clients: allClients
   }, [isTimerMine, activeTimer])
 
   const allNotifItems = [
+    ...reminders.filter(r => r.toUserIds.includes(currentUser?.id)).map(r => ({
+      id: `rem-${r.id}`,
+      Icon: Bell,
+      color: 'text-orange-400',
+      bg: 'bg-orange-500/5 border-orange-500/10',
+      label: `Erinnerung von ${r.fromName}`,
+      body: r.findingTitle,
+      sub: r.message || null,
+    })),
     ...scopeFindings.filter(f => f.severity === 'CRITICAL' && f.status === 'Open').slice(0, 3).map(f => {
       const client = scopeClients.find(c => c.id === f.clientId)
       return { id: f.id, Icon: AlertTriangle, color: 'text-red-400', bg: 'bg-red-500/5 border-red-500/10', label: 'Critical Finding offen', body: f.title, sub: client?.name }
@@ -754,8 +907,17 @@ function TopBar({ title, subtitle, currentUser, assignments, clients: allClients
     }),
   ]
   const notifItems = allNotifItems.filter(n => !readNotifs.has(n.id))
-  const markRead = (id) => setReadNotifs(prev => new Set([...prev, id]))
-  const markAllRead = () => setReadNotifs(new Set(allNotifItems.map(n => n.id)))
+  const lsKey = `holysec_read_notifs_${currentUser?.id || 'guest'}`
+  const markRead = (id) => setReadNotifs(prev => {
+    const next = new Set([...prev, id])
+    localStorage.setItem(lsKey, JSON.stringify([...next]))
+    return next
+  })
+  const markAllRead = () => {
+    const next = new Set(allNotifItems.map(n => n.id))
+    localStorage.setItem(lsKey, JSON.stringify([...next]))
+    setReadNotifs(next)
+  }
 
   const presenceCfg = {
     online: { dot: 'bg-green-400', text: 'text-green-400', label: 'ONLINE', ping: true },
@@ -875,7 +1037,7 @@ function TopBar({ title, subtitle, currentUser, assignments, clients: allClients
 
 // ─── DASHBOARD ───────────────────────────────────────────────────────────────
 
-function Dashboard({ onClientClick, clients: allClients = CLIENTS, currentUser, assignments = {}, findings: allFindingsProp = FINDINGS, engagements: allEngProp = ENGAGEMENTS, onNav }) {
+function Dashboard({ onClientClick, clients: allClients = CLIENTS, currentUser, assignments = {}, findings: allFindingsProp = FINDINGS, engagements: allEngProp = ENGAGEMENTS, onNav, tipsLang = 'de' }) {
   const { clients: scopedClients } = getMyScope(currentUser, assignments, allClients, allEngProp, allFindingsProp)
   const activeClients = scopedClients.filter(c => c.status === 'Active').length
   const openCriticals = allFindingsProp.filter(f => f.severity === 'CRITICAL' && f.status === 'Open').length
@@ -909,16 +1071,16 @@ function Dashboard({ onClientClick, clients: allClients = CLIENTS, currentUser, 
     <div className="p-6 space-y-6">
       {/* KPI row */}
       <div className="grid grid-cols-4 gap-4">
-        <KpiCard label="Active Clients" value={activeClients} sub={`${scopedClients.length} total`} icon={Users} accent info="Anzahl der Clients mit Status 'Active' — laufende Verträge und aktive Engagements." onClick={() => onNav?.('client-manager', { status: 'Active' })} />
-        <KpiCard label="Open Criticals" value={openCriticals} sub="Require immediate action" icon={AlertTriangle} danger info="CVSS ≥ 9.0 Findings mit Status 'Open' über alle Clients — erfordern sofortige Maßnahmen." onClick={() => onNav?.('findings', { severity: 'CRITICAL', status: 'Open' })} />
-        <KpiCard label="Open Findings" value={totalOpen} sub={`${allFindingsProp.length} total tracked`} icon={ShieldAlert} info="Alle Vulnerabilities mit Status 'Open' über alle Clients und Engagements hinweg." onClick={() => onNav?.('findings', { status: 'Open' })} />
-        <KpiCard label="Planned Tests" value={plannedEngagements} sub="This quarter" icon={Calendar} info="Engagements mit Status 'Planned' — noch nicht gestartete Pentests im aktuellen Quartal." onClick={() => onNav?.('engagements', { status: 'Planned' })} />
+        <KpiCard label="Active Clients" value={activeClients} sub={`${scopedClients.length} total`} icon={Users} accent info={TIPS[tipsLang].activeClients} onClick={() => onNav?.('client-manager', { status: 'Active' })} />
+        <KpiCard label="Open Criticals" value={openCriticals} sub="Require immediate action" icon={AlertTriangle} danger info={TIPS[tipsLang].openCriticals} onClick={() => onNav?.('findings', { severity: 'CRITICAL', status: 'Open' })} />
+        <KpiCard label="Open Findings" value={totalOpen} sub={`${allFindingsProp.length} total tracked`} icon={ShieldAlert} info={TIPS[tipsLang].openFindings} onClick={() => onNav?.('findings', { status: 'Open' })} />
+        <KpiCard label="Planned Tests" value={plannedEngagements} sub="This quarter" icon={Calendar} info={TIPS[tipsLang].plannedTests} onClick={() => onNav?.('engagements', { status: 'Planned' })} />
       </div>
 
       {/* Charts row */}
       <div className="grid grid-cols-3 gap-4">
         <Panel className="col-span-2">
-          <PanelHeader title="Engagements / Month" subtitle="Last 12 months" info="Anzahl abgeschlossener und geplanter Engagements pro Monat über die letzten 12 Monate." />
+          <PanelHeader title="Engagements / Month" subtitle="Last 12 months" info={TIPS[tipsLang].engPerMonth} />
           <div className="p-4 h-52">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={MONTHLY_ENGAGEMENTS} barSize={18}>
@@ -933,7 +1095,7 @@ function Dashboard({ onClientClick, clients: allClients = CLIENTS, currentUser, 
         </Panel>
 
         <Panel>
-          <PanelHeader title="Findings by Severity" info="Verteilung aller Findings nach Schweregrad (CRITICAL, HIGH, MEDIUM, LOW) über alle Clients." />
+          <PanelHeader title="Findings by Severity" info={TIPS[tipsLang].findingsBySev} />
           <div className="p-4 h-52 flex flex-col items-center justify-center">
             <ResponsiveContainer width="100%" height="80%">
               <PieChart>
@@ -960,7 +1122,7 @@ function Dashboard({ onClientClick, clients: allClients = CLIENTS, currentUser, 
       {/* CVSS Distribution + Recent Findings */}
       <div className="grid grid-cols-2 gap-4">
         <Panel>
-          <PanelHeader title="CVSS Score Distribution" info="Häufigkeitsverteilung der CVSS-Scores aller Findings. Zeigt wo sich die Schwachstellen im Scoring-Spektrum konzentrieren." />
+          <PanelHeader title="CVSS Score Distribution" info={TIPS[tipsLang].cvssDistrib} />
           <div className="p-4 h-44">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={CVSS_DISTRIBUTION}>
@@ -975,7 +1137,7 @@ function Dashboard({ onClientClick, clients: allClients = CLIENTS, currentUser, 
         </Panel>
 
         <Panel>
-          <PanelHeader title="Recent Critical Findings" info="Die neuesten Findings mit Schweregrad CRITICAL (CVSS ≥ 9.0) — sortiert nach Datum, mit aktuellem Behebungsstatus." />
+          <PanelHeader title="Recent Critical Findings" info={TIPS[tipsLang].recentCritical} />
           <div className="divide-y divide-[#1e293b]">
             {allFindingsProp.filter(f => f.severity === 'CRITICAL').sort((a,b) => new Date(b.date) - new Date(a.date)).slice(0, 4).map(f => {
               const client = allClients.find(c => c.id === f.clientId)
@@ -998,7 +1160,7 @@ function Dashboard({ onClientClick, clients: allClients = CLIENTS, currentUser, 
 
       {/* Client tiles */}
       <Panel>
-        <PanelHeader title="Client Overview" subtitle={`${scopedClients.length} clients total`} info="Alle verwalteten Clients mit Status, Kritikalität und nächstem Testtermin. Klicken für Detailansicht." />
+        <PanelHeader title="Client Overview" subtitle={`${scopedClients.length} clients total`} info={TIPS[tipsLang].clientOverview} />
         <div className="p-4 grid grid-cols-3 gap-3">
           {scopedClients.map(client => {
             const ScopeIcon = SCOPE_ICONS[client.scopeType] || Globe
@@ -1133,7 +1295,7 @@ function ClientModal({ client, onSave, onClose }) {
 
 // ─── CLIENT LIST ─────────────────────────────────────────────────────────────
 
-function ClientList({ clients: allClients = CLIENTS, onClientClick, currentUser, assignments, onAdd, onEdit, onDelete, defaultStatus = 'All' }) {
+function ClientList({ clients: allClients = CLIENTS, onClientClick, currentUser, assignments, onAdd, onEdit, onDelete, defaultStatus = 'All', tipsLang = 'de' }) {
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState(defaultStatus)
   const [showModal, setShowModal] = useState(false)
@@ -1186,7 +1348,7 @@ function ClientList({ clients: allClients = CLIENTS, onClientClick, currentUser,
         <PanelHeader
           title="Client Management"
           subtitle={`${filtered.length} von ${scopeClients.length} Clients`}
-          info="Verwaltungsübersicht aller Clients. Zeigt Kontaktinfos, Vertragsstatus, offene Findings, Engagements und den Report-Bestand nach Typ (TR = Technical Report, ES = Executive Summary, RP = Remediation Plan)."
+          info={TIPS[tipsLang].clientList}
         />
         <div className="overflow-x-auto">
         <table className="w-full text-xs font-mono">
@@ -1217,7 +1379,9 @@ function ClientList({ clients: allClients = CLIENTS, onClientClick, currentUser,
                   <td className="px-4 py-3 text-slate-400 whitespace-nowrap">{client.industry}</td>
                   <td className="px-4 py-3 text-slate-300 whitespace-nowrap">{client.contact?.name || '—'}</td>
                   <td className="px-4 py-3 whitespace-nowrap">
-                    <span className="text-cyan-400 text-[10px]">{client.contact?.email || '—'}</span>
+                    {client.contact?.email
+                      ? <a href={`mailto:${client.contact.email}`} onClick={e => e.stopPropagation()} className="text-cyan-400 text-[10px] hover:text-cyan-300 hover:underline transition-colors">{client.contact.email}</a>
+                      : <span className="text-slate-700 text-[10px]">—</span>}
                   </td>
                   <td className="px-4 py-3 w-36">
                     <div className="flex items-center gap-2">
@@ -1306,7 +1470,7 @@ function ClientList({ clients: allClients = CLIENTS, onClientClick, currentUser,
 
 // ─── CLIENT DETAIL ────────────────────────────────────────────────────────────
 
-function ClientDetail({ clientId, onBack, clients: allClients = CLIENTS }) {
+function ClientDetail({ clientId, onBack, clients: allClients = CLIENTS, tipsLang = 'de', onNav }) {
   const [tab, setTab] = useState('overview')
   const client = allClients.find(c => c.id === clientId)
   if (!client) return null
@@ -1359,10 +1523,10 @@ function ClientDetail({ clientId, onBack, clients: allClients = CLIENTS }) {
           <div className="space-y-4">
             {/* Quick KPIs */}
             <div className="grid grid-cols-4 gap-3">
-              <KpiCard label="Open Findings" value={openF} sub="Aktuell offen" icon={ShieldAlert} danger={criticalOpen > 0} info="Alle Findings mit Status 'Open' für diesen Client — inkl. kritischer Befunde die sofortige Maßnahmen erfordern." />
-              <KpiCard label="Closed" value={closedF} sub="Behoben" icon={CheckCircle2} accent={closedF > 0} info="Findings die erfolgreich behoben und verifiziert wurden." />
-              <KpiCard label="Restbudget" value={`${remainHours}h`} sub={`von ${client.contract.hours}h gesamt`} icon={Clock} danger={hoursPercent > 85} info="Verbleibende Vertragsstunden. Bei > 85% Verbrauch wird der Wert rot — Nachverhandlung empfohlen." />
-              <KpiCard label="Vertrag endet" value={daysLeft <= 0 ? 'ABGELAUFEN' : `${daysLeft}d`} sub={client.contract.end} icon={Calendar} danger={daysLeft <= 30 && daysLeft >= 0} info="Verbleibende Tage bis Vertragsende. Unter 30 Tagen wird eine Verlängerung empfohlen." />
+              <KpiCard label="Open Findings" value={openF} sub="Aktuell offen" icon={ShieldAlert} danger={criticalOpen > 0} info={TIPS[tipsLang].clientOpenFindings} onClick={() => onNav?.('findings', { clientId: client.id, status: 'Open' })} />
+              <KpiCard label="Closed" value={closedF} sub="Behoben" icon={CheckCircle2} accent={closedF > 0} info={TIPS[tipsLang].clientClosed} onClick={() => onNav?.('findings', { clientId: client.id, status: 'Closed' })} />
+              <KpiCard label="Restbudget" value={`${remainHours}h`} sub={`von ${client.contract.hours}h gesamt`} icon={Clock} danger={hoursPercent > 85} info={TIPS[tipsLang].clientBudget} />
+              <KpiCard label="Vertrag endet" value={daysLeft <= 0 ? 'ABGELAUFEN' : `${daysLeft}d`} sub={client.contract.end} icon={Calendar} danger={daysLeft <= 30 && daysLeft >= 0} info={TIPS[tipsLang].clientContractEnd} />
             </div>
 
             <div className="grid grid-cols-3 gap-4">
@@ -1374,8 +1538,12 @@ function ClientDetail({ clientId, onBack, clients: allClients = CLIENTS }) {
                 </div>
                 <div className="space-y-2 text-xs font-mono">
                   <div><span className="text-slate-600">Name</span><div className="text-slate-200">{client.contact.name}</div></div>
-                  <div><span className="text-slate-600">E-Mail</span><div className="text-cyan-400">{client.contact.email}</div></div>
-                  <div><span className="text-slate-600">Telefon</span><div className="text-slate-300">{client.contact.phone}</div></div>
+                  <div><span className="text-slate-600">E-Mail</span>
+                    <a href={`mailto:${client.contact.email}`} className="text-cyan-400 hover:text-cyan-300 hover:underline transition-colors block">{client.contact.email}</a>
+                  </div>
+                  <div><span className="text-slate-600">Telefon</span>
+                    <a href={`tel:${client.contact.phone}`} className="text-slate-300 hover:text-cyan-400 hover:underline transition-colors block">{client.contact.phone}</a>
+                  </div>
                 </div>
               </Panel>
 
@@ -1444,18 +1612,27 @@ function ClientDetail({ clientId, onBack, clients: allClients = CLIENTS }) {
 
       {tab === 'findings' && (
         <Panel>
-          <PanelHeader title="Findings" subtitle={`${findings.length} total`} />
+          <PanelHeader title="Findings" subtitle={`${findings.length} total`}>
+            {onNav && (
+              <button onClick={() => onNav('findings', { clientId: client.id })}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-cyan-500/30 bg-cyan-500/10 text-xs font-mono text-cyan-400 hover:bg-cyan-500/20 transition-all">
+                <ExternalLink size={11} /> Alle im Tracker
+              </button>
+            )}
+          </PanelHeader>
           <table className="w-full text-xs font-mono">
             <thead>
               <tr className="border-b border-[#1e293b]">
-                {['Title', 'CVE', 'CVSS', 'Category', 'Status', 'Date'].map(h => (
+                {['Title', 'CVE', 'CVSS', 'Category', 'Status', 'Date', ''].map(h => (
                   <th key={h} className="px-4 py-3 text-left text-[10px] text-slate-600 uppercase tracking-wider font-normal">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-[#1e293b]">
               {findings.map(f => (
-                <tr key={f.id} className="hover:bg-slate-800/30 transition-colors">
+                <tr key={f.id}
+                  onClick={() => onNav?.('findings', { clientId: client.id, findingId: f.id })}
+                  className={`transition-colors ${onNav ? 'cursor-pointer hover:bg-cyan-500/5' : 'hover:bg-slate-800/30'}`}>
                   <td className="px-4 py-3">
                     <div className="text-slate-200 font-medium">{f.title}</div>
                     <div className="text-slate-600 text-[10px] mt-0.5">{f.description.slice(0, 60)}…</div>
@@ -1465,6 +1642,9 @@ function ClientDetail({ clientId, onBack, clients: allClients = CLIENTS }) {
                   <td className="px-4 py-3 text-slate-400">{f.category}</td>
                   <td className="px-4 py-3"><StatusBadge status={f.status} /></td>
                   <td className="px-4 py-3 text-slate-500">{f.date}</td>
+                  <td className="px-4 py-3">
+                    {onNav && <ChevronRight size={13} className="text-slate-700 group-hover:text-cyan-400" />}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -1474,14 +1654,26 @@ function ClientDetail({ clientId, onBack, clients: allClients = CLIENTS }) {
 
       {tab === 'engagements' && (
         <div className="space-y-3">
+          {onNav && engagements.length > 0 && (
+            <div className="flex justify-end">
+              <button onClick={() => onNav('engagements', { clientId: client.id })}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-cyan-500/30 bg-cyan-500/10 text-xs font-mono text-cyan-400 hover:bg-cyan-500/20 transition-all">
+                <ExternalLink size={11} /> Alle im Planner
+              </button>
+            </div>
+          )}
           {engagements.map(eng => (
-            <Panel key={eng.id} className="p-4">
+            <Panel key={eng.id} className={`p-4 ${onNav ? 'cursor-pointer hover:border-cyan-500/30 transition-colors' : ''}`}
+              onClick={() => onNav?.('engagements', { clientId: client.id, engagementId: eng.id })}>
               <div className="flex items-start justify-between mb-2">
                 <div>
                   <h3 className="text-sm font-mono font-semibold text-slate-100">{eng.title}</h3>
                   <p className="text-xs font-mono text-slate-500">{eng.start} → {eng.end}</p>
                 </div>
-                <StatusBadge status={eng.status} />
+                <div className="flex items-center gap-2">
+                  <StatusBadge status={eng.status} />
+                  {onNav && <ChevronRight size={14} className="text-slate-600" />}
+                </div>
               </div>
               <div className="flex gap-2 mt-3">
                 {['Recon', 'Scanning', 'Exploitation', 'Reporting'].map(phase => {
@@ -1713,18 +1905,114 @@ function NewFindingModal({ clients = CLIENTS, currentUser, onSave, onClose, edit
   )
 }
 
-function FindingsTracker({ currentUser, assignments, findings: allFindingsProp = FINDINGS, onAddFinding, onEditFinding, onDeleteFinding, clients: allClientsProp = CLIENTS, defaultSeverity = 'All', defaultStatus = 'All' }) {
+// ─── REMINDER MODAL ──────────────────────────────────────────────────────────
+
+function ReminderModal({ finding, engagement, teamMembers, currentUser, onSend, onClose }) {
+  const available = teamMembers.filter(m => m.id !== currentUser?.id)
+  const engTeam   = engagement ? available.filter(m => (engagement.assignedTo || []).includes(m.id)) : []
+
+  const [selectedIds, setSelectedIds] = useState(engTeam.map(m => m.id))
+  const [message,     setMessage]     = useState('')
+
+  const toggle = (id) => setSelectedIds(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id])
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl p-6 w-full max-w-md shadow-2xl space-y-4" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-mono font-semibold text-slate-100 flex items-center gap-2">
+            <Bell size={14} className="text-orange-400" /> Erinnerung senden
+          </h3>
+          <button onClick={onClose} className="text-slate-500 hover:text-slate-300 transition-colors"><X size={16} /></button>
+        </div>
+
+        {/* Finding-Kurzinfo */}
+        <div className="bg-slate-900/60 border border-[#1e293b] rounded-lg px-3 py-2.5 space-y-1">
+          <div className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">Finding</div>
+          <div className="text-xs font-mono text-slate-200 font-medium leading-snug">{finding.title}</div>
+          <div className="flex items-center gap-2">
+            <SeverityBadge severity={finding.severity} />
+            {engagement && <span className="text-[10px] font-mono text-slate-500 truncate">{engagement.title}</span>}
+          </div>
+        </div>
+
+        {/* Empfänger */}
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">Empfänger</span>
+            <div className="ml-auto flex gap-1.5">
+              {engTeam.length > 0 && (
+                <button onClick={() => setSelectedIds(engTeam.map(m => m.id))}
+                  className="text-[10px] font-mono text-cyan-400 border border-cyan-500/30 px-2 py-0.5 rounded hover:bg-cyan-500/10 transition-colors">
+                  Engagement-Team
+                </button>
+              )}
+              <button
+                onClick={() => setSelectedIds(selectedIds.length === available.length ? [] : available.map(m => m.id))}
+                className="text-[10px] font-mono text-slate-500 border border-[#1e293b] px-2 py-0.5 rounded hover:text-slate-300 transition-colors">
+                {selectedIds.length === available.length ? 'Alle abwählen' : 'Alle wählen'}
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-1 max-h-44 overflow-y-auto">
+            {available.map(m => {
+              const checked = selectedIds.includes(m.id)
+              return (
+                <label key={m.id}
+                  className={`flex items-center gap-2.5 px-2.5 py-2 rounded cursor-pointer transition-colors border ${checked ? 'bg-cyan-500/8 border-cyan-500/20' : 'border-transparent hover:bg-slate-800/40'}`}>
+                  <input type="checkbox" checked={checked} onChange={() => toggle(m.id)} className="accent-cyan-500 shrink-0" />
+                  <MemberAvatar member={m} size="sm" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-mono text-slate-200">{m.name}</div>
+                    <div className="text-[10px] font-mono text-slate-600">{m.role}</div>
+                  </div>
+                </label>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Optionale Nachricht */}
+        <div>
+          <label className="block text-[10px] font-mono text-slate-500 mb-1.5 uppercase tracking-wider">Nachricht (optional)</label>
+          <textarea value={message} onChange={e => setMessage(e.target.value)} rows={2}
+            placeholder="z.B. Bitte Remediation bis Freitag abschließen."
+            className="w-full bg-[#1e293b] border border-[#334155] rounded-lg px-3 py-2 text-xs font-mono text-slate-200 placeholder-slate-600 focus:outline-none focus:border-cyan-500/50 resize-none transition-colors" />
+        </div>
+
+        <div className="flex gap-3 pt-1">
+          <button onClick={onClose}
+            className="flex-1 py-2 border border-[#1e293b] rounded text-xs font-mono text-slate-400 hover:text-slate-200 transition-all">
+            Abbrechen
+          </button>
+          <button onClick={() => { if (!selectedIds.length) return; onSend({ toUserIds: selectedIds, fromUserId: currentUser?.id, fromName: currentUser?.name, findingId: finding.id, findingTitle: finding.title, findingSeverity: finding.severity, message: message.trim() }); onClose() }}
+            disabled={selectedIds.length === 0}
+            className="flex-1 py-2 bg-orange-500 hover:bg-orange-400 disabled:opacity-40 rounded text-xs font-mono font-bold text-black transition-all flex items-center justify-center gap-1.5">
+            <Bell size={12} /> Senden {selectedIds.length > 0 && `(${selectedIds.length})`}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── FINDINGS TRACKER ────────────────────────────────────────────────────────
+
+function FindingsTracker({ currentUser, assignments, findings: allFindingsProp = FINDINGS, onAddFinding, onEditFinding, onDeleteFinding, clients: allClientsProp = CLIENTS, teamMembers = [], engagements = [], onSendReminder, defaultSeverity = 'All', defaultStatus = 'All', defaultClientId = 'All', defaultFindingId = null, tipsLang = 'de' }) {
   const { findings: scopeFindings, clients: scopeClients } = getMyScope(currentUser, assignments, allClientsProp, ENGAGEMENTS, allFindingsProp)
   const [severityFilter, setSeverityFilter] = useState(defaultSeverity)
   const [statusFilter, setStatusFilter] = useState(defaultStatus)
-  const [clientFilter, setClientFilter] = useState('All')
+  const [clientFilter, setClientFilter] = useState(defaultClientId)
   const [search, setSearch] = useState('')
   const [findings, setFindings] = useState(scopeFindings)
-  const [expandedId, setExpandedId] = useState(null)
+  const [expandedId, setExpandedId] = useState(defaultFindingId)
   const [noteInputId, setNoteInputId] = useState(null)
   const [noteText, setNoteText] = useState('')
   const [showNewModal, setShowNewModal] = useState(false)
   const [editFinding, setEditFinding] = useState(null)
+  const [remindFinding, setRemindFinding] = useState(null)
+  const canRemind = currentUser?.role === 'Admin' || currentUser?.role === 'Senior Pentester'
 
   useEffect(() => { setFindings(scopeFindings) }, [allFindingsProp])
 
@@ -1811,7 +2099,7 @@ function FindingsTracker({ currentUser, assignments, findings: allFindingsProp =
       )}
 
       <Panel>
-        <PanelHeader title="Vulnerability Database" subtitle={`${filtered.length} findings`} info="Alle erfassten Schwachstellen aus aktiven und abgeschlossenen Engagements. Zeigt CVSS-Score, Schweregrad, CVE-Referenz und aktuellen Behebungsstatus. Klicke auf einen Eintrag zum Aufklappen oder um den Status weiterzuschalten." />
+        <PanelHeader title="Vulnerability Database" subtitle={`${filtered.length} findings`} info={TIPS[tipsLang].vulnDB} />
         <div className="divide-y divide-[#1e293b]">
           {filtered.map(f => {
             const client = allClientsProp.find(c => c.id === f.clientId)
@@ -1832,16 +2120,13 @@ function FindingsTracker({ currentUser, assignments, findings: allFindingsProp =
                     ? <div className="w-32 shrink-0 text-[10px] font-mono text-cyan-400">{f.cve}</div>
                     : <div className="w-32 shrink-0 text-[10px] font-mono text-slate-700">No CVE</div>
                   }
-                  <div className="shrink-0"><StatusBadge status={f.status} /></div>
+                  <div className="shrink-0">
+                    {currentUser?.role !== 'Junior Pentester'
+                      ? <button onClick={e => { e.stopPropagation(); cycleStatus(f.id) }} className="hover:opacity-75 transition-opacity" title="Status wechseln"><StatusBadge status={f.status} /></button>
+                      : <StatusBadge status={f.status} />
+                    }
+                  </div>
                   <div className="shrink-0 flex items-center gap-1">
-                    {currentUser?.role !== 'Junior Pentester' && (
-                      <button
-                        onClick={e => { e.stopPropagation(); cycleStatus(f.id) }}
-                        className="px-2 py-1 rounded text-[10px] font-mono border border-[#1e293b] text-slate-500 hover:text-cyan-400 hover:border-cyan-500/40 transition-all"
-                      >
-                        Cycle
-                      </button>
-                    )}
                     {(currentUser?.role === 'Admin' || currentUser?.role === 'Senior Pentester' || currentUser?.role === 'Pentester') && (
                       <button
                         onClick={e => { e.stopPropagation(); setEditFinding(f) }}
@@ -1849,6 +2134,15 @@ function FindingsTracker({ currentUser, assignments, findings: allFindingsProp =
                         title="Finding bearbeiten"
                       >
                         <Edit3 size={12} />
+                      </button>
+                    )}
+                    {canRemind && (
+                      <button
+                        onClick={e => { e.stopPropagation(); setRemindFinding(f) }}
+                        className="p-1 rounded text-slate-700 hover:text-orange-400 hover:bg-orange-500/10 transition-all"
+                        title="Erinnerung senden"
+                      >
+                        <Bell size={12} />
                       </button>
                     )}
                     {currentUser?.role === 'Admin' && (
@@ -1864,9 +2158,43 @@ function FindingsTracker({ currentUser, assignments, findings: allFindingsProp =
                   </div>
                 </div>
 
-                {isExpanded && (
+                {isExpanded && (() => {
+                  const discoverer = teamMembers.find(m => m.id === f.discoveredBy)
+                  const engagement = engagements.find(e => e.id === f.engagementId)
+                  const engTeam    = engagement ? teamMembers.filter(m => (engagement.assignedTo || []).includes(m.id)) : []
+                  return (
                   <div className="px-4 pb-4 bg-slate-900/50 border-t border-[#1e293b]">
-                    <div className="grid grid-cols-2 gap-4 pt-3">
+                    {/* Meta-Zeile: Entdecker + Engagement */}
+                    <div className="flex items-center gap-6 pt-3 pb-3 border-b border-[#1e293b] mb-3 flex-wrap">
+                      {discoverer && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-mono text-slate-600 uppercase tracking-wider">Entdeckt von</span>
+                          <MemberAvatar member={discoverer} size="sm" />
+                          <span className="text-xs font-mono text-slate-300">{discoverer.name}</span>
+                          <span className="text-[10px] font-mono text-slate-600">({discoverer.role})</span>
+                        </div>
+                      )}
+                      {engagement && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-mono text-slate-600 uppercase tracking-wider">Engagement</span>
+                          <span className="text-xs font-mono text-cyan-400">{engagement.title}</span>
+                          <StatusBadge status={engagement.status} />
+                        </div>
+                      )}
+                      {engTeam.length > 0 && (
+                        <div className="flex items-center gap-2 ml-auto">
+                          <span className="text-[10px] font-mono text-slate-600 uppercase tracking-wider">Team</span>
+                          <div className="flex -space-x-1">
+                            {engTeam.map(m => (
+                              <div key={m.id} className="ring-1 ring-[#0f172a] rounded-full" title={m.name}>
+                                <MemberAvatar member={m} size="sm" />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
                       <div>
                         <p className="text-[10px] font-mono text-slate-600 uppercase mb-1">Description</p>
                         <p className="text-xs font-mono text-slate-300 leading-relaxed">{f.description}</p>
@@ -1899,12 +2227,24 @@ function FindingsTracker({ currentUser, assignments, findings: allFindingsProp =
                       )}
                     </div>
                   </div>
-                )}
+                  )
+                })()}
               </div>
             )
           })}
         </div>
       </Panel>
+
+      {remindFinding && (
+        <ReminderModal
+          finding={remindFinding}
+          engagement={engagements.find(e => e.id === remindFinding.engagementId)}
+          teamMembers={teamMembers}
+          currentUser={currentUser}
+          onSend={(r) => { onSendReminder?.(r) }}
+          onClose={() => setRemindFinding(null)}
+        />
+      )}
     </div>
   )
 }
@@ -2047,7 +2387,9 @@ function NewEngagementModal({ clients = CLIENTS, currentUser, onSave, onClose })
   )
 }
 
-function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, currentUser, groups = [], engagements: allEngProp = ENGAGEMENTS, onAddEngagement, clients: allClientsProp = CLIENTS, defaultStatus = 'All' }) {
+function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, currentUser, groups = [], engagements: allEngProp = ENGAGEMENTS, onAddEngagement, onStatusChange, clients: allClientsProp = CLIENTS, defaultStatus = 'All', defaultClientId = null, tipsLang = 'de' }) {
+  const ENG_STATUS_CYCLE = { Planned: 'Active', Active: 'On Hold', 'On Hold': 'Completed', Completed: 'Planned' }
+  const canCycleStatus = currentUser?.role === 'Admin' || currentUser?.role === 'Senior Pentester'
   const [view, setView] = useState('timeline')
   const [selectedEng, setSelectedEng] = useState(null)
   const [assignModal, setAssignModal] = useState(null)
@@ -2061,6 +2403,7 @@ function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, curre
     .sort((a, b) => new Date(a.start) - new Date(b.start))
     .filter(e => statusFilter === 'All' || e.status === statusFilter)
     .filter(e => !myOnly || (assignments[e.id] || []).includes(currentUser?.id))
+    .filter(e => !defaultClientId || e.clientId === defaultClientId)
 
   return (
     <div className="p-6 space-y-4">
@@ -2114,7 +2457,7 @@ function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, curre
 
       {view === 'timeline' && (
         <Panel>
-          <PanelHeader title="Engagement Timeline" subtitle="Gantt-style view" info="Zeitliche Darstellung aller Engagements als Gantt-Diagramm. Zeigt Laufzeit und Status auf einen Blick — hilfreich für Ressourcenplanung und Terminüberschneidungen." />
+          <PanelHeader title="Engagement Timeline" subtitle="Gantt-style view" info={TIPS[tipsLang].engTimeline} />
           <div className="p-4 space-y-2">
             {sorted.map(eng => {
               const client = allClientsProp.find(c => c.id === eng.clientId)
@@ -2132,7 +2475,10 @@ function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, curre
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-[10px] font-mono text-slate-600">{eng.start} → {eng.end}</span>
-                      <StatusBadge status={eng.status} />
+                      {canCycleStatus
+                        ? <button onClick={e => { e.stopPropagation(); onStatusChange?.(eng.id) }} title={`→ ${ENG_STATUS_CYCLE[eng.status]}`} className="hover:opacity-75 transition-opacity"><StatusBadge status={eng.status} /></button>
+                        : <StatusBadge status={eng.status} />
+                      }
                     </div>
                   </div>
 
@@ -2204,7 +2550,7 @@ function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, curre
 
       {view === 'list' && (
         <Panel>
-          <PanelHeader title="All Engagements" subtitle={`${scopeEngagements.length} total`} info="Liste aller Pentest-Engagements mit Status, Zeitraum und zugewiesenen Operatoren. Über das Zuweisungs-Menü (→) können Mitarbeiter einem Engagement zugeteilt werden." />
+          <PanelHeader title="All Engagements" subtitle={`${scopeEngagements.length} total`} info={TIPS[tipsLang].engList} />
           <table className="w-full text-xs font-mono">
             <thead>
               <tr className="border-b border-[#1e293b]">
@@ -2223,7 +2569,12 @@ function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, curre
                     <td className="px-4 py-3 text-slate-400">{eng.type}</td>
                     <td className="px-4 py-3 text-slate-500">{eng.start}</td>
                     <td className="px-4 py-3 text-slate-500">{eng.end}</td>
-                    <td className="px-4 py-3"><StatusBadge status={eng.status} /></td>
+                    <td className="px-4 py-3">
+                      {canCycleStatus
+                        ? <button onClick={() => onStatusChange?.(eng.id)} title={`→ ${ENG_STATUS_CYCLE[eng.status]}`} className="hover:opacity-75 transition-opacity"><StatusBadge status={eng.status} /></button>
+                        : <StatusBadge status={eng.status} />
+                      }
+                    </td>
                     <td className="px-4 py-3">
                       <div className="flex gap-1">
                         {eng.phases.map(p => (
@@ -2252,7 +2603,7 @@ function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, curre
 
 // ─── CLIENT RADAR ────────────────────────────────────────────────────────────
 
-function ClientRadar({ onClientClick, currentUser, assignments, clients: allClients = CLIENTS }) {
+function ClientRadar({ onClientClick, currentUser, assignments, clients: allClients = CLIENTS, tipsLang = 'de' }) {
   const [radarFilter, setRadarFilter] = useState('All')
   const { clients: scopeClients } = getMyScope(currentUser, assignments, allClients)
 
@@ -2274,19 +2625,19 @@ function ClientRadar({ onClientClick, currentUser, assignments, clients: allClie
       <div className="grid grid-cols-4 gap-4">
         <KpiCard label="Active Clients" value={activeCount} sub={`${scopeClients.length} gesamt`} icon={Activity}
           accent={radarFilter === 'All'} active={radarFilter === 'active'}
-          info="Clients mit Status 'Active' — laufender Vertrag, Engagements werden aktuell durchgeführt oder sind aktiv geplant."
+          info={TIPS[tipsLang].radarActive}
           onClick={() => setRadarFilter(radarFilter === 'active' ? 'All' : 'active')} />
         <KpiCard label="On Hold" value={onHoldCount} sub="Pausiert" icon={Pause}
           active={radarFilter === 'onhold'}
-          info="Clients mit Status 'On Hold' — der Pentest-Prozess ist vorübergehend pausiert, z.B. wegen laufender Patches, Freeze-Phasen oder Kundenwunsch."
+          info={TIPS[tipsLang].radarOnHold}
           onClick={() => setRadarFilter(radarFilter === 'onhold' ? 'All' : 'onhold')} />
         <KpiCard label="Kritisch" value={criticalCount} sub="Höchste Priorität" icon={AlertTriangle}
           active={radarFilter === 'critical'}
-          info="Clients mit Kritikalitätsstufe 'CRITICAL' (CVSS ≥ 9.0 Findings offen oder sehr hohe Angriffsexponierung) — höchste Handlungspriorität."
+          info={TIPS[tipsLang].radarCritical}
           onClick={() => setRadarFilter(radarFilter === 'critical' ? 'All' : 'critical')} />
         <KpiCard label="Test ≤30d" value={upcomingCount} sub="Bald fällig" icon={Calendar}
           active={radarFilter === 'upcoming'}
-          info="Clients, bei denen der nächste geplante Pentest in 30 Tagen oder weniger stattfindet — zur rechtzeitigen Vorbereitung und Ressourcenplanung."
+          info={TIPS[tipsLang].radarDue}
           onClick={() => setRadarFilter(radarFilter === 'upcoming' ? 'All' : 'upcoming')} />
       </div>
       <Panel>
@@ -2523,7 +2874,7 @@ function ReportModal({ report, client, onClose }) {
   )
 }
 
-function ReportingCenter({ reports, onStatusChange, onAdd, currentUser, assignments, onAuditLog }) {
+function ReportingCenter({ reports, onStatusChange, onAdd, currentUser, assignments, onAuditLog, tipsLang = 'de' }) {
   const [selectedReport, setSelectedReport] = useState(null)
   const [filterClient, setFilterClient] = useState('All')
   const [filterType, setFilterType] = useState('All')
@@ -2566,7 +2917,11 @@ function ReportingCenter({ reports, onStatusChange, onAdd, currentUser, assignme
       </div>
 
       <div className="grid grid-cols-3 gap-3 mb-2">
-        {['Technical Report', 'Executive Summary', 'Remediation Plan'].map(type => {
+        {[
+          { type: 'Technical Report',  info: 'Detaillierter Befundbericht für das IT- und Security-Team. Enthält alle Findings mit CVSS-Score, Proof of Concept, CVE-Referenz und konkreter Remediation-Empfehlung. Zielgruppe: Admins, Entwickler, Sicherheitsteam.' },
+          { type: 'Executive Summary', info: 'Kompakte Managementzusammenfassung ohne tiefe technische Details. Zeigt Gesamtrisikobewertung, kritische Findings und priorisierte Handlungsempfehlungen auf 1–2 Seiten. Zielgruppe: Geschäftsführung, CISO, Vorstand.' },
+          { type: 'Remediation Plan',  info: 'Strukturierter Maßnahmenplan zur Behebung aller identifizierten Findings. Enthält priorisierte Schritte, empfohlene Zeitrahmen (CRITICAL ≤ 7d, HIGH ≤ 30d) und Erfolgskriterien für den Retest. Zielgruppe: Projektmanagement, Entwicklung.' },
+        ].map(({ type, info }) => {
           const Icon = REPORT_TYPE_ICONS[type]
           const count = scopeReports.filter(r => r.type === type).length
           return (
@@ -2576,8 +2931,11 @@ function ReportingCenter({ reports, onStatusChange, onAdd, currentUser, assignme
               <div className="p-2 bg-slate-800 rounded">
                 <Icon size={14} className={filterType === type ? 'text-cyan-400' : 'text-slate-400'} />
               </div>
-              <div>
-                <div className="text-xs font-mono text-slate-400">{type}</div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-mono text-slate-400 truncate">{type}</span>
+                  <span onClick={e => e.stopPropagation()}><InfoTooltip text={info} /></span>
+                </div>
                 <div className="text-lg font-mono font-bold text-slate-100">{count}</div>
               </div>
             </Panel>
@@ -2586,7 +2944,7 @@ function ReportingCenter({ reports, onStatusChange, onAdd, currentUser, assignme
       </div>
 
       <Panel>
-        <PanelHeader title="Report Registry" subtitle={`${filtered.length} documents`} info="Alle erstellten Reports nach Client und Engagement. Typen: Technical Report (detaillierter Befundbericht), Executive Summary (Kurzfassung für Management), Remediation Plan (Maßnahmenplan). Status per Klick weiterschalten: Draft → Delivered → Final." />
+        <PanelHeader title="Report Registry" subtitle={`${filtered.length} documents`} info={TIPS[tipsLang].reportRegistry} />
         <div className="divide-y divide-[#1e293b]">
           {filtered.map(rep => {
             const client = CLIENTS.find(c => c.id === rep.clientId)
@@ -3043,7 +3401,7 @@ function TimeTrackingSection({ entries, currentUser, members }) {
   )
 }
 
-function SettingsPage({ members, currentUser, onAdd, onRemove, onEdit, timeEntries, darkMode, onToggleDark }) {
+function SettingsPage({ members, currentUser, onAdd, onRemove, onEdit, timeEntries, darkMode, onToggleDark, uiLang, onUiLangChange, tipsLang, onTipsLangChange }) {
   const isAdmin = currentUser?.role === 'Admin'
   const [tab, setTab]             = useState(isAdmin ? 'users' : 'general')
   const [apiKey, setApiKey]       = useState('sk-holysec-••••••••••••••••')
@@ -3141,6 +3499,34 @@ function SettingsPage({ members, currentUser, onAdd, onRemove, onEdit, timeEntri
                 className={`relative w-10 h-5 rounded-full border transition-all ${darkMode ? 'bg-cyan-500 border-cyan-500' : 'bg-slate-800 border-[#1e293b]'}`}>
                 <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${darkMode ? 'left-5' : 'left-0.5'}`} />
               </button>
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-xs font-mono text-slate-200">Seitensprache</div>
+                <div className="text-[10px] font-mono text-slate-600">Sprache der Navigation und Beschriftungen</div>
+              </div>
+              <div className="flex gap-1">
+                {['de', 'en'].map(lang => (
+                  <button key={lang} onClick={() => onUiLangChange?.(lang)}
+                    className={`px-3 py-1.5 rounded border text-xs font-mono uppercase tracking-wider transition-all ${uiLang === lang ? 'bg-cyan-500/15 border-cyan-500/50 text-cyan-400' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
+                    {lang === 'de' ? '🇩🇪 DE' : '🇬🇧 EN'}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-xs font-mono text-slate-200">Tooltip-Sprache</div>
+                <div className="text-[10px] font-mono text-slate-600">Sprache der Info-Tooltips und Hinweise</div>
+              </div>
+              <div className="flex gap-1">
+                {['de', 'en'].map(lang => (
+                  <button key={lang} onClick={() => onTipsLangChange?.(lang)}
+                    className={`px-3 py-1.5 rounded border text-xs font-mono uppercase tracking-wider transition-all ${tipsLang === lang ? 'bg-cyan-500/15 border-cyan-500/50 text-cyan-400' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
+                    {lang === 'de' ? '🇩🇪 DE' : '🇬🇧 EN'}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </Panel>
@@ -3716,54 +4102,168 @@ const CRITICALITY_COLOR = {
   LOW:      { fill: '#4ade80', stroke: '#22c55e' },
 }
 
-function ClientMapPage({ clients = CLIENTS }) {
-  const mapped = clients.filter(c => c.lat && c.lng)
-  const center = [51.1657, 10.4515]
+function ClientMapPage({ clients = CLIENTS, darkMode = true, onClientClick }) {
+  const mapDivRef = useRef(null)
+  const mapRef    = useRef(null)
+  const [filterStatus,      setFilterStatus]      = useState('All')
+  const [filterCriticality, setFilterCriticality] = useState('All')
+
+  const mapped = useMemo(() => clients.filter(c => c.lat && c.lng), [clients])
+
+  const visible = useMemo(() => mapped.filter(c => {
+    if (filterStatus      !== 'All' && c.status      !== filterStatus)      return false
+    if (filterCriticality !== 'All' && c.criticality !== filterCriticality) return false
+    return true
+  }), [mapped, filterStatus, filterCriticality])
+
+  const totalOpen   = mapped.reduce((s, c) => s + (c.openFindings || 0), 0)
+  const activeCount = mapped.filter(c => c.status === 'Active').length
+
+  // Ref, damit der popupopen-Handler immer die aktuelle Callback-Referenz nutzt
+  // ohne den useEffect neu auszulösen
+  const onClientClickRef = useRef(onClientClick)
+  useEffect(() => { onClientClickRef.current = onClientClick }, [onClientClick])
+
+  useEffect(() => {
+    if (!mapDivRef.current) return
+    if (mapRef.current) { mapRef.current.remove(); mapRef.current = null }
+
+    const map = L.map(mapDivRef.current, { center: [51.1657, 10.4515], zoom: 6, zoomControl: true })
+    mapRef.current = map
+
+    L.tileLayer(
+      darkMode
+        ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+        : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+      { attribution: '&copy; CARTO', subdomains: 'abcd' }
+    ).addTo(map)
+
+    visible.forEach(c => {
+      const col       = CRITICALITY_COLOR[c.criticality] || CRITICALITY_COLOR.LOW
+      const pinH      = c.openFindings > 0 ? 36 : 28
+      const pinW      = Math.round(pinH * 0.72)
+      const innerFill = darkMode ? '#0f172a' : '#ffffff'
+
+      const icon = L.divIcon({
+        html: `<svg width="${pinW}" height="${pinH}" viewBox="0 0 20 28" xmlns="http://www.w3.org/2000/svg">
+          <path d="M10 0C4.477 0 0 4.477 0 10c0 7.5 10 18 10 18S20 17.5 20 10C20 4.477 15.523 0 10 0Z"
+            fill="${col.fill}" stroke="${col.stroke}" stroke-width="1.5"/>
+          <circle cx="10" cy="10" r="4" fill="${innerFill}" opacity="0.8"/>
+        </svg>`,
+        className:   '',
+        iconSize:    [pinW, pinH],
+        iconAnchor:  [pinW / 2, pinH],
+        popupAnchor: [0, -pinH - 4],
+      })
+
+      const marker = L.marker([c.lat, c.lng], { icon }).addTo(map)
+
+      const bg  = darkMode ? '#0f172a' : '#ffffff'
+      const bd  = darkMode ? '#1e293b' : '#e2e8f0'
+      const txt = darkMode ? '#f1f5f9' : '#1e293b'
+      const btnBg  = darkMode ? '#1e293b' : '#f1f5f9'
+      const btnTxt = darkMode ? '#06b6d4' : '#0e7490'
+      const openLine = c.openFindings > 0
+        ? `<div style="margin-top:6px;font-size:10px;font-family:monospace;color:#f87171">&#9888; ${c.openFindings} open finding${c.openFindings !== 1 ? 's' : ''}</div>`
+        : ''
+
+      marker.bindPopup(`
+        <div style="background:${bg};border:1px solid ${bd};border-radius:8px;padding:12px;min-width:200px;font-family:monospace;box-shadow:0 8px 24px rgba(0,0,0,0.25)">
+          <div style="font-size:13px;font-weight:700;color:${txt};margin-bottom:3px">${c.name}</div>
+          <div style="font-size:10px;color:#64748b;margin-bottom:8px">${c.city ?? ''} · ${c.industry}</div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+            <span style="font-size:10px;padding:2px 7px;border-radius:4px;background:${col.fill}22;color:${col.fill};border:1px solid ${col.stroke}44;font-weight:700">${c.criticality}</span>
+            <span style="font-size:10px;color:#94a3b8">${c.status}</span>
+          </div>
+          ${openLine}
+          <button
+            class="map-detail-btn"
+            data-client-id="${c.id}"
+            style="margin-top:10px;width:100%;padding:6px 0;background:${btnBg};border:1px solid ${bd};border-radius:6px;color:${btnTxt};font-size:10px;font-family:monospace;font-weight:700;letter-spacing:0.08em;cursor:pointer;text-transform:uppercase;transition:opacity .15s"
+            onmouseover="this.style.opacity='.75'"
+            onmouseout="this.style.opacity='1'"
+          >&#8594; Details anzeigen</button>
+        </div>
+      `, { className: 'holysec-popup' })
+    })
+
+    // Sobald ein Popup geöffnet wird, den Detail-Button mit dem React-Callback verdrahten
+    map.on('popupopen', (e) => {
+      const btn = e.popup.getElement()?.querySelector('.map-detail-btn')
+      if (btn) {
+        btn.onclick = () => {
+          const id = btn.dataset.clientId
+          if (id && onClientClickRef.current) onClientClickRef.current(id)
+        }
+      }
+    })
+
+    return () => { if (mapRef.current) { mapRef.current.remove(); mapRef.current = null } }
+  }, [visible, darkMode])
+
+  const chipBase   = darkMode
+    ? 'border-[#1e293b] text-slate-500 hover:text-slate-300 hover:border-slate-600'
+    : 'border-gray-200 text-gray-500 hover:text-gray-700 hover:border-gray-400'
+  const chipActive = darkMode
+    ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-400'
+    : 'border-cyan-600/60 bg-cyan-50 text-cyan-700'
+  const panelCls   = darkMode ? 'bg-[#0f172a] border-[#1e293b]' : 'bg-white border-gray-200'
+  const borderCls  = darkMode ? 'border-[#1e293b]' : 'border-gray-200'
+  const dividerCls = darkMode ? 'bg-[#1e293b]'     : 'bg-gray-200'
+  const metaText   = darkMode ? 'text-slate-500'   : 'text-gray-500'
+  const headText   = darkMode ? 'text-slate-100'   : 'text-gray-900'
 
   return (
     <div className="h-full flex flex-col p-6 gap-4">
-      <div className="flex items-center gap-4 flex-wrap">
-        {Object.entries(CRITICALITY_COLOR).map(([level, col]) => (
-          <div key={level} className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-full inline-block border" style={{ background: col.fill, borderColor: col.stroke }} />
-            <span className="text-[10px] font-mono text-slate-500 uppercase">{level}</span>
-          </div>
-        ))}
-        <span className="ml-auto text-[10px] font-mono text-slate-600">{mapped.length} Standorte</span>
+      {/* Stats + Filter-Leiste */}
+      <div className="flex items-center gap-3 flex-wrap">
+        {/* Mini-Stats */}
+        <div className={`flex items-center gap-4 px-4 py-2.5 rounded-lg border ${panelCls}`}>
+          {[
+            { label: 'Standorte',     val: mapped.length,                    cls: headText },
+            { label: 'Aktiv',         val: activeCount,                       cls: 'text-cyan-400' },
+            { label: 'Open Findings', val: totalOpen, cls: totalOpen > 0 ? 'text-red-400' : 'text-green-400' },
+            { label: 'Sichtbar',      val: visible.length,                    cls: headText },
+          ].map(({ label, val, cls }, i, arr) => (
+            <React.Fragment key={label}>
+              <div className="text-center">
+                <div className={`text-[9px] font-mono uppercase tracking-widest ${metaText}`}>{label}</div>
+                <div className={`text-base font-mono font-bold ${cls}`}>{val}</div>
+              </div>
+              {i < arr.length - 1 && <div className={`w-px h-8 ${dividerCls}`} />}
+            </React.Fragment>
+          ))}
+        </div>
+
+        {/* Status-Filter */}
+        <div className="flex items-center gap-1">
+          {['All', 'Active', 'Pending', 'Completed', 'On Hold'].map(s => (
+            <button key={s} onClick={() => setFilterStatus(s)}
+              className={`px-2.5 py-1.5 rounded text-[10px] font-mono border transition-all ${filterStatus === s ? chipActive : chipBase}`}>
+              {s}
+            </button>
+          ))}
+        </div>
+
+        {/* Kritikalitäts-Filter / Legende */}
+        <div className="ml-auto flex items-center gap-1">
+          <button onClick={() => setFilterCriticality('All')}
+            className={`px-2.5 py-1.5 rounded text-[10px] font-mono border transition-all ${filterCriticality === 'All' ? chipActive : chipBase}`}>
+            All
+          </button>
+          {Object.entries(CRITICALITY_COLOR).map(([level, col]) => (
+            <button key={level} onClick={() => setFilterCriticality(level)}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-[10px] font-mono border transition-all ${filterCriticality === level ? chipActive : chipBase}`}>
+              <span className="w-2 h-2 rounded-full shrink-0" style={{ background: col.fill }} />
+              {level}
+            </button>
+          ))}
+        </div>
       </div>
 
-      <div className="flex-1 rounded-xl overflow-hidden border border-[#1e293b]" style={{ minHeight: 400 }}>
-        <MapContainer center={center} zoom={6} style={{ height: '100%', width: '100%' }} className="bg-[#0a0a0a]">
-          <TileLayer
-            url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-            attribution='&copy; <a href="https://carto.com/">CARTO</a>'
-          />
-          {mapped.map(c => {
-            const col = CRITICALITY_COLOR[c.criticality] || CRITICALITY_COLOR.LOW
-            return (
-              <CircleMarker
-                key={c.id}
-                center={[c.lat, c.lng]}
-                radius={c.openFindings > 0 ? 10 : 7}
-                pathOptions={{ color: col.stroke, fillColor: col.fill, fillOpacity: 0.85, weight: 2 }}
-              >
-                <Popup className="holysec-popup">
-                  <div className="bg-[#0f172a] border border-[#1e293b] rounded-lg p-3 text-left min-w-[180px]">
-                    <div className="text-xs font-mono font-bold text-slate-100 mb-1">{c.name}</div>
-                    <div className="text-[10px] font-mono text-slate-500 mb-2">{c.city} · {c.industry}</div>
-                    <div className="flex gap-2 flex-wrap">
-                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded" style={{ background: col.fill + '22', color: col.fill, border: `1px solid ${col.stroke}40` }}>{c.criticality}</span>
-                      <span className="text-[10px] font-mono text-slate-400">{c.status}</span>
-                    </div>
-                    {c.openFindings > 0 && (
-                      <div className="mt-2 text-[10px] font-mono text-red-400">{c.openFindings} open finding{c.openFindings !== 1 ? 's' : ''}</div>
-                    )}
-                  </div>
-                </Popup>
-              </CircleMarker>
-            )
-          })}
-        </MapContainer>
+      {/* Karte */}
+      <div className={`flex-1 rounded-xl overflow-hidden border ${borderCls}`} style={{ minHeight: 400 }}>
+        <div ref={mapDivRef} style={{ height: '100%', width: '100%' }} />
       </div>
     </div>
   )
@@ -3898,7 +4398,7 @@ const LOG_CAT = {
   download:    { label: 'Download',      color: 'text-teal-400',   bg: 'bg-teal-400/10 border-teal-400/20',     dot: 'bg-teal-400' },
 }
 
-function AuditLogPage({ logs = [], teamMembers = [], onClear }) {
+function AuditLogPage({ logs = [], teamMembers = [], onClear, tipsLang = 'de' }) {
   const [search, setSearch] = useState('')
   const [catFilter, setCatFilter] = useState('All')
   const [userFilter, setUserFilter] = useState('All')
@@ -3999,7 +4499,7 @@ function AuditLogPage({ logs = [], teamMembers = [], onClear }) {
 
       {/* Table */}
       <Panel>
-        <PanelHeader title="Event Log" subtitle={`${filtered.length} Einträge`} info="Vollständiges Aktivitätsprotokoll aller Benutzeraktionen. Zeigt Login-Zeiten, IP-Adressen, Datenänderungen und Downloads in Echtzeit." />
+        <PanelHeader title="Event Log" subtitle={`${filtered.length} Einträge`} info={TIPS[tipsLang].auditLog} />
         <div className="overflow-x-auto">
           <table className="w-full text-xs font-mono">
             <thead>
@@ -4109,6 +4609,10 @@ export default function App() {
   const [auditLogs, setAuditLogs] = useState(() => {
     try { return JSON.parse(localStorage.getItem('holysec_audit_logs') || '[]') } catch { return [] }
   })
+  const [reminders, setReminders] = useState([])
+  const [uiLang, setUiLang] = useState(() => localStorage.getItem('holysec_ui_lang') || 'en')
+  const [tipsLang, setTipsLang] = useState(() => localStorage.getItem('holysec_tips_lang') || 'de')
+  const [engStatusOverrides, setEngStatusOverrides] = useState({})
   const sessionIpRef = useRef('–')
   const currentUserRef = useRef(null)
 
@@ -4134,9 +4638,18 @@ export default function App() {
     })
   }, [])
 
+  const handleSendReminder = useCallback((r) => {
+    const id = `rem_${Date.now()}`
+    setReminders(prev => [...prev, { id, ...r }])
+    logEvent('Erinnerung gesendet', `Finding: ${r.findingTitle} → ${r.toUserIds.length} Empfänger`, 'findings')
+  }, [logEvent])
+
   useEffect(() => {
     document.body.classList.toggle('light-mode', !darkMode)
   }, [darkMode])
+
+  useEffect(() => { localStorage.setItem('holysec_ui_lang', uiLang) }, [uiLang])
+  useEffect(() => { localStorage.setItem('holysec_tips_lang', tipsLang) }, [tipsLang])
 
   useEffect(() => {
     localStorage.setItem('holysec_time_entries', JSON.stringify(timeEntries))
@@ -4276,6 +4789,26 @@ export default function App() {
     logEvent('ENGAGEMENT_ERSTELLT', `"${eng.title}" [${eng.type}] — ${eng.status}`, 'engagements')
   }, [logEvent])
 
+  const handleEngStatusChange = useCallback((id) => {
+    const cycle = { Planned: 'Active', Active: 'On Hold', 'On Hold': 'Completed', Completed: 'Planned' }
+    const isCustom = customEngagements.some(e => e.id === id)
+    if (isCustom) {
+      setCustomEngagements(prev => prev.map(e => {
+        if (e.id !== id) return e
+        const next = cycle[e.status] || e.status
+        logEvent('ENGAGEMENT_STATUS', `"${e.title}" → ${next}`, 'engagements')
+        return { ...e, status: next }
+      }))
+    } else {
+      const staticEng = ENGAGEMENTS.find(e => e.id === id)
+      if (!staticEng) return
+      const currentStatus = engStatusOverrides[id] || staticEng.status
+      const next = cycle[currentStatus] || currentStatus
+      logEvent('ENGAGEMENT_STATUS', `"${staticEng.title}" → ${next}`, 'engagements')
+      setEngStatusOverrides(prev => ({ ...prev, [id]: next }))
+    }
+  }, [customEngagements, engStatusOverrides, logEvent])
+
   const handleAddClient    = useCallback((c) => { setClients(prev => [...prev, c]); logEvent('CLIENT_ERSTELLT', `"${c.name}" [${c.industry}]`, 'clients') }, [logEvent])
   const handleEditClient   = useCallback((c) => { setClients(prev => prev.map(x => x.id === c.id ? c : x)); logEvent('CLIENT_BEARBEITET', `"${c.name}"`, 'clients') }, [logEvent])
   const handleDeleteClient = useCallback((id) => { setClients(prev => prev.filter(x => x.id !== id)); logEvent('CLIENT_GELÖSCHT', `ID: ${id}`, 'clients') }, [logEvent])
@@ -4310,7 +4843,10 @@ export default function App() {
   const handleClientClick = useCallback((id) => { setSelectedClientId(id); setPage('client-detail') }, [])
   const handleBackToClients = useCallback(() => { setSelectedClientId(null); setPage('client-manager') }, [])
 
-  const allEngagements = useMemo(() => [...ENGAGEMENTS, ...customEngagements], [customEngagements])
+  const allEngagements = useMemo(() => [
+    ...ENGAGEMENTS.map(e => engStatusOverrides[e.id] ? { ...e, status: engStatusOverrides[e.id] } : e),
+    ...customEngagements,
+  ], [customEngagements, engStatusOverrides])
   const allFindings = useMemo(() => [...FINDINGS, ...customFindings]
     .filter(f => !deletedFindingIds.has(f.id))
     .map(f => findingEdits[f.id] ? findingEdits[f.id] : f),
@@ -4327,7 +4863,7 @@ export default function App() {
       <Sidebar
         active={page} onNav={p => handleNav(p)}
         collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(v => !v)}
-        currentUser={currentUser} onLogout={handleLogout}
+        currentUser={currentUser} onLogout={handleLogout} uiLang={uiLang}
       />
 
       <div className="flex-1 flex flex-col overflow-hidden">
@@ -4338,22 +4874,23 @@ export default function App() {
           activeTimer={activeTimer} onClockIn={handleClockIn} onClockOut={handleClockOut}
           userPresence={userPresence} onPresenceChange={setUserPresence}
           darkMode={darkMode} onToggleDark={() => setDarkMode(v => !v)}
+          reminders={reminders}
         />
 
         <main className={`flex-1 ${page === 'map' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
-          {page === 'dashboard'        && <Dashboard onClientClick={handleClientClick} clients={clients} currentUser={currentUser} assignments={assignments} findings={allFindings} engagements={allEngagements} onNav={handleNav} />}
-          {page === 'client-radar'     && <ClientRadar onClientClick={handleClientClick} currentUser={currentUser} assignments={assignments} clients={clients} />}
-          {page === 'client-manager'   && <ClientList clients={clients} onClientClick={handleClientClick} currentUser={currentUser} assignments={assignments} onAdd={handleAddClient} onEdit={handleEditClient} onDelete={handleDeleteClient} defaultStatus={pageOpts.status} />}
-          {page === 'map'              && <ClientMapPage clients={clients} />}
-          {page === 'client-detail'    && selectedClientId && <ClientDetail clientId={selectedClientId} onBack={handleBackToClients} clients={clients} />}
-          {page === 'findings'         && <FindingsTracker currentUser={currentUser} assignments={assignments} findings={allFindings} onAddFinding={handleAddFinding} onEditFinding={handleEditFinding} onDeleteFinding={handleDeleteFinding} clients={clients} defaultSeverity={pageOpts.severity} defaultStatus={pageOpts.status} />}
-          {page === 'engagements'      && <EngagementPlanner teamMembers={teamMembers} assignments={assignments} onAssign={handleAssign} currentUser={currentUser} groups={engagementGroups} engagements={allEngagements} onAddEngagement={handleAddEngagement} clients={clients} defaultStatus={pageOpts.status} />}
+          {page === 'dashboard'        && <Dashboard onClientClick={handleClientClick} clients={clients} currentUser={currentUser} assignments={assignments} findings={allFindings} engagements={allEngagements} onNav={handleNav} tipsLang={tipsLang} />}
+          {page === 'client-radar'     && <ClientRadar onClientClick={handleClientClick} currentUser={currentUser} assignments={assignments} clients={clients} tipsLang={tipsLang} />}
+          {page === 'client-manager'   && <ClientList clients={clients} onClientClick={handleClientClick} currentUser={currentUser} assignments={assignments} onAdd={handleAddClient} onEdit={handleEditClient} onDelete={handleDeleteClient} defaultStatus={pageOpts.status} tipsLang={tipsLang} />}
+          {page === 'map'              && <ClientMapPage clients={clients} darkMode={darkMode} onClientClick={handleClientClick} />}
+          {page === 'client-detail'    && selectedClientId && <ClientDetail clientId={selectedClientId} onBack={handleBackToClients} clients={clients} tipsLang={tipsLang} onNav={handleNav} />}
+          {page === 'findings'         && <FindingsTracker currentUser={currentUser} assignments={assignments} findings={allFindings} onAddFinding={handleAddFinding} onEditFinding={handleEditFinding} onDeleteFinding={handleDeleteFinding} clients={clients} teamMembers={teamMembers} engagements={allEngagements} onSendReminder={handleSendReminder} defaultSeverity={pageOpts.severity} defaultStatus={pageOpts.status} defaultClientId={pageOpts.clientId || 'All'} defaultFindingId={pageOpts.findingId || null} tipsLang={tipsLang} />}
+          {page === 'engagements'      && <EngagementPlanner teamMembers={teamMembers} assignments={assignments} onAssign={handleAssign} currentUser={currentUser} groups={engagementGroups} engagements={allEngagements} onAddEngagement={handleAddEngagement} onStatusChange={handleEngStatusChange} clients={clients} defaultStatus={pageOpts.status} defaultClientId={pageOpts.clientId || null} tipsLang={tipsLang} />}
           {page === 'eng-groups'       && <EngagementGroupsPage groups={engagementGroups} onAdd={handleAddGroup} onEdit={handleEditGroup} onDelete={handleDeleteGroup} teamMembers={teamMembers} currentUser={currentUser} />}
-          {page === 'reports'          && <ReportingCenter reports={reports} onStatusChange={handleReportStatusChange} onAdd={handleAddReport} currentUser={currentUser} assignments={assignments} onAuditLog={handleAuditLogDownload} />}
+          {page === 'reports'          && <ReportingCenter reports={reports} onStatusChange={handleReportStatusChange} onAdd={handleAddReport} currentUser={currentUser} assignments={assignments} onAuditLog={handleAuditLogDownload} tipsLang={tipsLang} />}
           {page === 'team'             && <TeamPage members={teamMembers} currentUser={currentUser} onAdd={handleAddMember} onRemove={handleRemoveMember} assignments={assignments} engagements={allEngagements} userPresence={userPresence} timeEntries={timeEntries} onAuditLog={handleAuditLogDownload} />}
-          {page === 'audit'            && <AuditLogPage logs={auditLogs} teamMembers={teamMembers} onClear={handleClearAuditLogs} />}
+          {page === 'audit'            && <AuditLogPage logs={auditLogs} teamMembers={teamMembers} onClear={handleClearAuditLogs} tipsLang={tipsLang} />}
           {page === 'about'            && <AboutHolySec />}
-          {page === 'settings'         && <SettingsPage members={teamMembers} currentUser={currentUser} onAdd={handleAddMember} onRemove={handleRemoveMember} onEdit={handleEditMember} timeEntries={timeEntries} darkMode={darkMode} onToggleDark={() => setDarkMode(v => !v)} />}
+          {page === 'settings'         && <SettingsPage members={teamMembers} currentUser={currentUser} onAdd={handleAddMember} onRemove={handleRemoveMember} onEdit={handleEditMember} timeEntries={timeEntries} darkMode={darkMode} onToggleDark={() => setDarkMode(v => !v)} uiLang={uiLang} onUiLangChange={setUiLang} tipsLang={tipsLang} onTipsLangChange={setTipsLang} />}
         </main>
       </div>
     </div>
