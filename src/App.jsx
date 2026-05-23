@@ -863,7 +863,7 @@ function Sidebar({ active, onNav, collapsed, onToggle, currentUser, onLogout, ui
 
 // ─── TOPBAR ──────────────────────────────────────────────────────────────────
 
-function TopBar({ title, subtitle, currentUser, assignments, clients: allClients = CLIENTS, engagements: allEngagements = ENGAGEMENTS, activeTimer, onClockIn, onClockOut, userPresence, onPresenceChange, darkMode, onToggleDark, reminders = [] }) {
+function TopBar({ title, subtitle, currentUser, assignments, clients: allClients = CLIENTS, engagements: allEngagements = ENGAGEMENTS, findings: allFindings = FINDINGS, activeTimer, onClockIn, onClockOut, userPresence, onPresenceChange, darkMode, onToggleDark, reminders = [] }) {
   const [showNotifs, setShowNotifs] = useState(false)
   const [showPresence, setShowPresence] = useState(false)
   const [readNotifs, setReadNotifs] = useState(() => {
@@ -873,7 +873,7 @@ function TopBar({ title, subtitle, currentUser, assignments, clients: allClients
     } catch { return new Set() }
   })
   const [elapsed, setElapsed] = useState(0)
-  const { clients: scopeClients, findings: scopeFindings, engagements: scopeEngagements } = getMyScope(currentUser, assignments, allClients)
+  const { clients: scopeClients, findings: scopeFindings, engagements: scopeEngagements } = getMyScope(currentUser, assignments, allClients, allEngagements, allFindings)
 
   const isTimerMine = activeTimer?.userId === currentUser?.id
   useEffect(() => {
@@ -2000,7 +2000,7 @@ function ReminderModal({ finding, engagement, teamMembers, currentUser, onSend, 
 // ─── FINDINGS TRACKER ────────────────────────────────────────────────────────
 
 function FindingsTracker({ currentUser, assignments, findings: allFindingsProp = FINDINGS, onAddFinding, onEditFinding, onDeleteFinding, clients: allClientsProp = CLIENTS, teamMembers = [], engagements = [], onSendReminder, defaultSeverity = 'All', defaultStatus = 'All', defaultClientId = 'All', defaultFindingId = null, tipsLang = 'de' }) {
-  const { findings: scopeFindings, clients: scopeClients } = getMyScope(currentUser, assignments, allClientsProp, ENGAGEMENTS, allFindingsProp)
+  const { findings: scopeFindings, clients: scopeClients } = getMyScope(currentUser, assignments, allClientsProp, engagements, allFindingsProp)
   const [severityFilter, setSeverityFilter] = useState(defaultSeverity)
   const [statusFilter, setStatusFilter] = useState(defaultStatus)
   const [clientFilter, setClientFilter] = useState(defaultClientId)
@@ -2028,7 +2028,12 @@ function FindingsTracker({ currentUser, assignments, findings: allFindingsProp =
 
   const cycleStatus = (id) => {
     const cycle = { 'Open': 'In Remediation', 'In Remediation': 'Closed', 'Closed': 'Open' }
-    setFindings(prev => prev.map(f => f.id === id ? { ...f, status: cycle[f.status] } : f))
+    setFindings(prev => prev.map(f => {
+      if (f.id !== id) return f
+      const updated = { ...f, status: cycle[f.status] || f.status }
+      onEditFinding?.(updated)
+      return updated
+    }))
   }
 
   return (
@@ -2210,7 +2215,14 @@ function FindingsTracker({ currentUser, assignments, findings: allFindingsProp =
                           <input value={noteText} onChange={e => setNoteText(e.target.value)}
                             placeholder="Add a note..."
                             className="flex-1 bg-[#0f172a] border border-cyan-500/30 rounded px-3 py-1.5 text-xs font-mono text-slate-200 placeholder-slate-600 focus:outline-none" />
-                          <button onClick={() => { setNoteInputId(null); setNoteText('') }}
+                          <button onClick={() => {
+                            if (noteText.trim()) {
+                              const updated = { ...f, note: noteText.trim() }
+                              setFindings(prev => prev.map(x => x.id === f.id ? updated : x))
+                              onEditFinding?.(updated)
+                            }
+                            setNoteInputId(null); setNoteText('')
+                          }}
                             className="px-3 py-1 rounded text-xs font-mono bg-cyan-500 text-black font-bold hover:bg-cyan-400 transition-colors">
                             Save
                           </button>
@@ -2220,10 +2232,15 @@ function FindingsTracker({ currentUser, assignments, findings: allFindingsProp =
                           </button>
                         </div>
                       ) : (
-                        <button onClick={() => setNoteInputId(f.id)}
-                          className="text-[10px] font-mono text-slate-600 hover:text-cyan-400 transition-colors flex items-center gap-1">
-                          <Plus size={10} /> Add note
-                        </button>
+                        <div>
+                          {f.note && (
+                            <p className="text-[10px] font-mono text-slate-500 mb-1.5 pl-1 border-l border-[#1e293b]">{f.note}</p>
+                          )}
+                          <button onClick={() => { setNoteInputId(f.id); setNoteText(f.note || '') }}
+                            className="text-[10px] font-mono text-slate-600 hover:text-cyan-400 transition-colors flex items-center gap-1">
+                            <Plus size={10} /> {f.note ? 'Notiz bearbeiten' : 'Add note'}
+                          </button>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -2400,10 +2417,15 @@ function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, curre
   const { engagements: scopeEngagements } = getMyScope(currentUser, assignments, allClientsProp, allEngProp)
 
   const sorted = [...scopeEngagements]
-    .sort((a, b) => new Date(a.start) - new Date(b.start))
     .filter(e => statusFilter === 'All' || e.status === statusFilter)
     .filter(e => !myOnly || (assignments[e.id] || []).includes(currentUser?.id))
     .filter(e => !defaultClientId || e.clientId === defaultClientId)
+    .sort((a, b) => {
+      if (a.createdAt && !b.createdAt) return -1
+      if (!a.createdAt && b.createdAt) return 1
+      if (a.createdAt && b.createdAt) return b.createdAt - a.createdAt
+      return new Date(a.start) - new Date(b.start)
+    })
 
   return (
     <div className="p-6 space-y-4">
@@ -2551,7 +2573,7 @@ function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, curre
 
       {view === 'list' && (
         <Panel>
-          <PanelHeader title="All Engagements" subtitle={`${scopeEngagements.length} total`} info={TIPS[tipsLang].engList} />
+          <PanelHeader title="All Engagements" subtitle={`${sorted.length} von ${scopeEngagements.length}`} info={TIPS[tipsLang].engList} />
           <table className="w-full text-xs font-mono">
             <thead>
               <tr className="border-b border-[#1e293b]">
@@ -2561,7 +2583,7 @@ function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, curre
               </tr>
             </thead>
             <tbody className="divide-y divide-[#1e293b]">
-              {scopeEngagements.map(eng => {
+              {sorted.map(eng => {
                 const client = allClientsProp.find(c => c.id === eng.clientId)
                 return (
                   <tr key={eng.id} className="hover:bg-slate-800/30 transition-colors">
@@ -4602,7 +4624,12 @@ const PAGE_TITLES = {
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState(null)
-  const [teamMembers, setTeamMembers] = useState(INITIAL_TEAM)
+  const [teamMembers, setTeamMembers] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('holysec_team_members') || 'null')
+      return saved || INITIAL_TEAM
+    } catch { return INITIAL_TEAM }
+  })
   const [assignments, setAssignments] = useState(
     Object.fromEntries(ENGAGEMENTS.map(e => [e.id, e.assignedTo || []]))
   )
@@ -4656,6 +4683,27 @@ export default function App() {
       .catch(() => { sessionIpRef.current = window.location.hostname || 'lokal' })
   }, [])
 
+  // Self-healing: restore members whose profile was stored in customUsersAuth
+  // and clean up auth entries that have neither a matching member nor stored profile
+  useEffect(() => {
+    setCustomUsersAuth(prev => {
+      const healed = prev.filter(a => a.memberData)
+      const orphaned = prev.filter(a => !a.memberData && !teamMembers.some(m => m.id === a.memberId))
+      if (orphaned.length > 0) {
+        // remove orphaned entries without memberData (unrecoverable)
+        return prev.filter(a => !orphaned.includes(a))
+      }
+      return prev
+    })
+    setTeamMembers(prev => {
+      const existingIds = new Set(prev.map(m => m.id))
+      const toRestore = customUsersAuth
+        .filter(a => a.memberData && !existingIds.has(a.memberId))
+        .map(a => a.memberData)
+      return toRestore.length > 0 ? [...prev, ...toRestore] : prev
+    })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     localStorage.setItem('holysec_audit_logs', JSON.stringify(auditLogs.slice(-1000)))
   }, [auditLogs])
@@ -4686,6 +4734,10 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('holysec_time_entries', JSON.stringify(timeEntries))
   }, [timeEntries])
+
+  useEffect(() => {
+    localStorage.setItem('holysec_team_members', JSON.stringify(teamMembers))
+  }, [teamMembers])
 
   useEffect(() => {
     if (activeTimer) localStorage.setItem('holysec_active_timer', JSON.stringify(activeTimer))
@@ -4735,12 +4787,20 @@ export default function App() {
   }, [logEvent])
 
   const handleLogin = useCallback((memberId) => {
-    const member = teamMembers.find(m => m.id === memberId)
+    let member = teamMembers.find(m => m.id === memberId)
+    if (!member) {
+      // Fallback: recover from stored memberData in customUsersAuth
+      const authEntry = customUsersAuth.find(a => a.memberId === memberId)
+      if (authEntry?.memberData) {
+        member = authEntry.memberData
+        setTeamMembers(prev => prev.some(m => m.id === memberId) ? prev : [...prev, member])
+      }
+    }
     if (member) {
       setCurrentUser(member)
       logEvent('LOGIN', `Anmeldung von ${window.location.host}`, 'auth', member)
     }
-  }, [teamMembers, logEvent])
+  }, [teamMembers, customUsersAuth, logEvent])
 
   const handleLogout = useCallback(() => {
     logEvent('LOGOUT', 'Abgemeldet', 'auth')
@@ -4766,7 +4826,7 @@ export default function App() {
   const handleAddMember = useCallback((member) => {
     const { password, ...memberData } = member
     setTeamMembers(prev => [...prev, memberData])
-    if (password) setCustomUsersAuth(prev => [...prev, { email: memberData.email, password, memberId: memberData.id }])
+    if (password) setCustomUsersAuth(prev => [...prev, { email: memberData.email, password, memberId: memberData.id, memberData }])
     logEvent('MITARBEITER_ERSTELLT', `${memberData.name} [${memberData.role}]`, 'team')
   }, [logEvent])
   const handleRemoveMember = useCallback((id) => {
@@ -4782,12 +4842,12 @@ export default function App() {
     if (password) {
       setCustomUsersAuth(prev => {
         const idx = prev.findIndex(a => a.memberId === memberData.id)
-        const entry = { email: memberData.email, password, memberId: memberData.id }
+        const entry = { email: memberData.email, password, memberId: memberData.id, memberData }
         if (idx >= 0) { const n = [...prev]; n[idx] = entry; return n }
         return [...prev, entry]
       })
     } else {
-      setCustomUsersAuth(prev => prev.map(a => a.memberId === memberData.id ? { ...a, email: memberData.email } : a))
+      setCustomUsersAuth(prev => prev.map(a => a.memberId === memberData.id ? { ...a, email: memberData.email, memberData } : a))
     }
     logEvent('MITARBEITER_BEARBEITET', `${memberData.name} [${memberData.role}]${password ? ' + Passwort geändert' : ''}`, 'team')
   }, [logEvent])
@@ -4816,7 +4876,8 @@ export default function App() {
   }, [])
 
   const handleAddEngagement = useCallback((eng) => {
-    setCustomEngagements(prev => [...prev, eng])
+    const withTs = { ...eng, createdAt: Date.now() }
+    setCustomEngagements(prev => [...prev, withTs])
     setAssignments(prev => ({ ...prev, [eng.id]: [] }))
     logEvent('ENGAGEMENT_ERSTELLT', `"${eng.title}" [${eng.type}] — ${eng.status}`, 'engagements')
   }, [logEvent])
@@ -4903,6 +4964,7 @@ export default function App() {
           title={page === 'client-detail' ? 'CLIENT DETAIL' : titleInfo.title}
           subtitle={page === 'client-detail' ? selectedClientId : titleInfo.subtitle}
           currentUser={currentUser} assignments={assignments} clients={clients}
+          engagements={allEngagements} findings={allFindings}
           activeTimer={activeTimer} onClockIn={handleClockIn} onClockOut={handleClockOut}
           userPresence={userPresence} onPresenceChange={setUserPresence}
           darkMode={darkMode} onToggleDark={() => setDarkMode(v => !v)}
