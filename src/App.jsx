@@ -2545,11 +2545,13 @@ function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, curre
                           <Users2 size={9} /> Zuweisen
                         </button>
                       )}
-                      <button
-                        onClick={e => { e.stopPropagation(); onEngDetail?.(eng.id) }}
-                        className={`flex items-center gap-1 px-2 py-0.5 rounded border text-[9px] font-mono transition-all ${pendingReports[eng.id] ? 'border-yellow-500/40 text-yellow-400 hover:bg-yellow-500/10' : 'border-[#1e293b] text-slate-600 hover:text-slate-300 hover:border-slate-600'}`}>
-                        <FileText size={9} /> Details
-                      </button>
+                      {(currentUser?.role === 'Admin' || (assignments[eng.id] || []).includes(currentUser?.id)) && (
+                        <button
+                          onClick={e => { e.stopPropagation(); onEngDetail?.(eng.id) }}
+                          className={`flex items-center gap-1 px-2 py-0.5 rounded border text-[9px] font-mono transition-all ${pendingReports[eng.id] ? 'border-yellow-500/40 text-yellow-400 hover:bg-yellow-500/10' : 'border-[#1e293b] text-slate-600 hover:text-slate-300 hover:border-slate-600'}`}>
+                          <FileText size={9} /> Details
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -2621,11 +2623,13 @@ function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, curre
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <button
-                        onClick={() => onEngDetail?.(eng.id)}
-                        className={`flex items-center gap-1 px-2 py-0.5 rounded border text-[9px] font-mono transition-all ${pendingReports[eng.id] ? 'border-yellow-500/40 text-yellow-400 hover:bg-yellow-500/10' : 'border-[#1e293b] text-slate-600 hover:text-slate-300 hover:border-slate-600'}`}>
-                        <FileText size={9} /> Details
-                      </button>
+                      {(currentUser?.role === 'Admin' || (assignments[eng.id] || []).includes(currentUser?.id)) && (
+                        <button
+                          onClick={() => onEngDetail?.(eng.id)}
+                          className={`flex items-center gap-1 px-2 py-0.5 rounded border text-[9px] font-mono transition-all ${pendingReports[eng.id] ? 'border-yellow-500/40 text-yellow-400 hover:bg-yellow-500/10' : 'border-[#1e293b] text-slate-600 hover:text-slate-300 hover:border-slate-600'}`}>
+                          <FileText size={9} /> Details
+                        </button>
+                      )}
                     </td>
                   </tr>
                 )
