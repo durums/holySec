@@ -20,6 +20,7 @@ import {
   MONTHLY_ENGAGEMENTS, CVSS_DISTRIBUTION, SEVERITY_DIST,
   TEAM_MEMBERS as INITIAL_TEAM, USERS_AUTH
 } from './data.js'
+import { apiPut, apiState, apiDelete, apiLogin, setToken } from './api.js'
 
 // ─── CONSTANTS ───────────────────────────────────────────────────────────────
 
@@ -175,7 +176,7 @@ function daysUntil(dateStr) {
 }
 
 function getMyScope(currentUser, assignments, allClients = CLIENTS, allEngagements = ENGAGEMENTS, allFindings = FINDINGS) {
-  if (!currentUser || currentUser.role === 'Admin' || currentUser.role === 'Junior Pentester') {
+  if (!currentUser || currentUser.role === 'Admin') {
     return { clients: allClients, findings: allFindings, engagements: allEngagements }
   }
   const engagements = allEngagements.filter(e => (assignments[e.id] || []).includes(currentUser.id))
@@ -187,7 +188,7 @@ function getMyScope(currentUser, assignments, allClients = CLIENTS, allEngagemen
   }
 }
 
-function StatusBadge({ status, size = 'sm' }) {
+const StatusBadge = React.memo(function StatusBadge({ status, size = 'sm' }) {
   const cfg = STATUS_CONFIG[status] || STATUS_CONFIG['Pending']
   const pad = size === 'sm' ? 'px-2 py-0.5 text-xs' : 'px-3 py-1 text-sm'
   return (
@@ -196,16 +197,16 @@ function StatusBadge({ status, size = 'sm' }) {
       {status}
     </span>
   )
-}
+})
 
-function SeverityBadge({ severity }) {
+const SeverityBadge = React.memo(function SeverityBadge({ severity }) {
   const cfg = SEVERITY_COLORS[severity] || SEVERITY_COLORS.LOW
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded border text-xs font-mono font-bold ${cfg.bg} ${cfg.text}`}>
       {severity}
     </span>
   )
-}
+})
 
 function CvssBar({ score }) {
   const pct = (score / 10) * 100
@@ -441,15 +442,15 @@ function MemberAvatar({ member, size = 'sm' }) {
   )
 }
 
-function Panel({ children, className = '', onClick }) {
+const Panel = React.memo(function Panel({ children, className = '', onClick }) {
   return (
     <div className={`bg-[#0f172a] border border-[#1e293b] rounded-lg ${className} ${onClick ? 'cursor-pointer' : ''}`} onClick={onClick}>
       {children}
     </div>
   )
-}
+})
 
-function PanelHeader({ title, subtitle, children, info }) {
+const PanelHeader = React.memo(function PanelHeader({ title, subtitle, children, info }) {
   return (
     <div className="flex items-center justify-between px-5 py-4 border-b border-[#1e293b]">
       <div>
@@ -462,9 +463,9 @@ function PanelHeader({ title, subtitle, children, info }) {
       {children && <div className="flex items-center gap-2">{children}</div>}
     </div>
   )
-}
+})
 
-function KpiCard({ label, value, sub, icon: Icon, accent = false, danger = false, info, onClick, active }) {
+const KpiCard = React.memo(function KpiCard({ label, value, sub, icon: Icon, accent = false, danger = false, info, onClick, active }) {
   const isHighlighted = accent || active
   const isDanger = danger && value > 0
   return (
@@ -485,7 +486,7 @@ function KpiCard({ label, value, sub, icon: Icon, accent = false, danger = false
       {sub && <div className={`text-xs font-mono ${isDanger ? 'text-red-400/60' : 'text-slate-500'}`}>{sub}</div>}
     </Panel>
   )
-}
+})
 
 // ─── LOGIN ────────────────────────────────────────────────────────────────────
 
@@ -495,85 +496,122 @@ function NetworkCanvas() {
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext('2d')
-    let animId
-    const LABELS = ['10.0.0.1', '192.168.1.1', '172.16.0.1', 'CVE-2024', 'SSH:22', 'RDP:3389', 'SMB:445', '443/tcp', '8080', '0x4f5c']
+    let animId, frame = 0
+
+    // Glow-Sprite einmalig pre-rendern statt createRadialGradient() per Frame
+    const GLOW = 18
+    const gc = new OffscreenCanvas(GLOW * 2, GLOW * 2)
+    const gctx = gc.getContext('2d')
+    const gr = gctx.createRadialGradient(GLOW, GLOW, 0, GLOW, GLOW, GLOW)
+    gr.addColorStop(0, 'rgba(6,182,212,0.22)')
+    gr.addColorStop(1, 'rgba(6,182,212,0)')
+    gctx.fillStyle = gr
+    gctx.beginPath(); gctx.arc(GLOW, GLOW, GLOW, 0, Math.PI * 2); gctx.fill()
+    const glowBitmap = gc.transferToImageBitmap()
+
+    const LABELS = ['10.0.0.1', '192.168.1.1', 'CVE-2024', 'SSH:22', 'RDP:3389', '443/tcp', 'SMB:445', '0x4f5c']
     const resize = () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight }
     window.addEventListener('resize', resize)
     resize()
-    const count = Math.min(65, Math.floor(canvas.width * canvas.height / 12000))
+
+    const count = Math.min(38, Math.floor(canvas.width * canvas.height / 18000))
     const nodes = Array.from({ length: count }, (_, i) => ({
       x: Math.random() * canvas.width,
       y: Math.random() * canvas.height,
-      vx: (Math.random() - 0.5) * 0.32,
-      vy: (Math.random() - 0.5) * 0.32,
-      r: i < 10 ? 2.2 : 1.3,
-      label: i < 10 ? LABELS[i] : null,
+      vx: (Math.random() - 0.5) * 0.28,
+      vy: (Math.random() - 0.5) * 0.28,
+      r: i < 8 ? 2.2 : 1.3,
+      label: i < 8 ? LABELS[i] : null,
       t: Math.random() * Math.PI * 2,
     }))
     const pulses = []
-    let frame = 0
-    const MAX = 145
+
+    const MAX = 125, MAX2 = MAX * MAX
+    // Verbindungen in Alpha-Buckets bündeln → statt ~800 einzelne stroke()-Calls nur ~8
+    const BUCKETS = 8
+    const buckets = Array.from({ length: BUCKETS }, () => [])
+    const alphaStrs = Array.from({ length: BUCKETS }, (_, b) =>
+      `rgba(6,182,212,${((b + 1) / BUCKETS * 0.10).toFixed(3)})`
+    )
+
     const draw = () => {
+      animId = requestAnimationFrame(draw)
+      frame++
+      if (frame % 2 !== 0) return  // 30fps cap
+
       const w = canvas.width, h = canvas.height
       ctx.clearRect(0, 0, w, h)
-      frame++
+
       nodes.forEach(n => {
-        n.x += n.vx; n.y += n.vy; n.t += 0.014
+        n.x += n.vx; n.y += n.vy; n.t += 0.012
         if (n.x < 0) { n.x = 0; n.vx = Math.abs(n.vx) } else if (n.x > w) { n.x = w; n.vx = -Math.abs(n.vx) }
         if (n.y < 0) { n.y = 0; n.vy = Math.abs(n.vy) } else if (n.y > h) { n.y = h; n.vy = -Math.abs(n.vy) }
       })
-      // Spawn data pulse every 55 frames
-      if (frame % 55 === 0 && pulses.length < 10) {
-        for (let a = 0; a < 30; a++) {
-          const i = Math.floor(Math.random() * nodes.length)
-          const j = Math.floor(Math.random() * nodes.length)
+
+      if (frame % 100 === 0 && pulses.length < 7) {
+        for (let a = 0; a < 20; a++) {
+          const i = Math.floor(Math.random() * count), j = Math.floor(Math.random() * count)
           if (i === j) continue
           const dx = nodes[i].x - nodes[j].x, dy = nodes[i].y - nodes[j].y
-          if (dx*dx + dy*dy < MAX*MAX) { pulses.push({ from: i, to: j, t: 0 }); break }
+          if (dx*dx + dy*dy < MAX2) { pulses.push({ from: i, to: j, t: 0 }); break }
         }
       }
-      // Connections
-      for (let i = 0; i < nodes.length; i++) {
-        for (let j = i + 1; j < nodes.length; j++) {
+
+      // Verbindungen: kein sqrt, Buckets für Batch-Draw
+      buckets.forEach(b => { b.length = 0 })
+      for (let i = 0; i < count; i++) {
+        for (let j = i + 1; j < count; j++) {
           const dx = nodes[i].x - nodes[j].x, dy = nodes[i].y - nodes[j].y
           const d2 = dx*dx + dy*dy
-          if (d2 < MAX*MAX) {
-            ctx.strokeStyle = `rgba(6,182,212,${(1 - Math.sqrt(d2)/MAX) * 0.11})`
-            ctx.lineWidth = 0.5
-            ctx.beginPath(); ctx.moveTo(nodes[i].x, nodes[i].y); ctx.lineTo(nodes[j].x, nodes[j].y); ctx.stroke()
+          if (d2 < MAX2) {
+            const b = Math.min(BUCKETS - 1, (BUCKETS * (1 - d2 / MAX2)) | 0)
+            buckets[b].push(nodes[i].x, nodes[i].y, nodes[j].x, nodes[j].y)
           }
         }
       }
+      ctx.lineWidth = 0.5
+      for (let b = 0; b < BUCKETS; b++) {
+        if (!buckets[b].length) continue
+        ctx.strokeStyle = alphaStrs[b]
+        ctx.beginPath()
+        for (let k = 0; k < buckets[b].length; k += 4) {
+          ctx.moveTo(buckets[b][k], buckets[b][k+1])
+          ctx.lineTo(buckets[b][k+2], buckets[b][k+3])
+        }
+        ctx.stroke()
+      }
+
       // Pulses
       for (let p = pulses.length - 1; p >= 0; p--) {
-        pulses[p].t += 0.019
+        pulses[p].t += 0.025
         if (pulses[p].t >= 1) { pulses.splice(p, 1); continue }
         const { from, to, t } = pulses[p]
         const n1 = nodes[from], n2 = nodes[to]
-        const dx = n1.x - n2.x, dy = n1.y - n2.y
-        if (dx*dx + dy*dy > MAX*MAX) { pulses.splice(p, 1); continue }
-        const x = n1.x + (n2.x - n1.x) * t, y = n1.y + (n2.y - n1.y) * t
-        ctx.fillStyle = `rgba(6,182,212,${Math.sin(t * Math.PI) * 0.85})`
-        ctx.beginPath(); ctx.arc(x, y, 2, 0, Math.PI * 2); ctx.fill()
+        if ((n1.x-n2.x)**2 + (n1.y-n2.y)**2 > MAX2) { pulses.splice(p, 1); continue }
+        ctx.fillStyle = `rgba(6,182,212,${Math.sin(t * Math.PI) * 0.8})`
+        ctx.beginPath()
+        ctx.arc(n1.x + (n2.x - n1.x) * t, n1.y + (n2.y - n1.y) * t, 2, 0, Math.PI * 2)
+        ctx.fill()
       }
-      // Nodes
+
+      // Knoten: Glow via pre-gerendertem Bitmap (drawImage statt createRadialGradient)
       nodes.forEach(n => {
         const pulse = 0.5 + 0.5 * Math.sin(n.t)
         if (n.r > 1.5) {
-          const g = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, 10)
-          g.addColorStop(0, `rgba(6,182,212,${0.12 + pulse * 0.08})`); g.addColorStop(1, 'rgba(6,182,212,0)')
-          ctx.fillStyle = g; ctx.beginPath(); ctx.arc(n.x, n.y, 10, 0, Math.PI * 2); ctx.fill()
+          ctx.globalAlpha = 0.12 + pulse * 0.10
+          ctx.drawImage(glowBitmap, n.x - GLOW, n.y - GLOW)
+          ctx.globalAlpha = 1
         }
-        ctx.fillStyle = `rgba(6,182,212,${0.2 + pulse * 0.35})`
+        ctx.fillStyle = `rgba(6,182,212,${(0.2 + pulse * 0.35).toFixed(2)})`
         ctx.beginPath(); ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2); ctx.fill()
         if (n.label) {
-          ctx.fillStyle = `rgba(100,116,139,${0.35 + pulse * 0.2})`
+          ctx.fillStyle = `rgba(100,116,139,${(0.3 + pulse * 0.2).toFixed(2)})`
           ctx.font = '7px monospace'
-          ctx.fillText(n.label, n.x + n.r + 5, n.y + 3)
+          ctx.fillText(n.label, n.x + n.r + 4, n.y + 3)
         }
       })
-      animId = requestAnimationFrame(draw)
     }
+
     draw()
     return () => { cancelAnimationFrame(animId); window.removeEventListener('resize', resize) }
   }, [])
@@ -606,15 +644,24 @@ function LoginPage({ onLogin, darkMode, onToggleDark, usersAuth = USERS_AUTH }) 
     return () => { cancelled = true; timers.forEach(clearTimeout) }
   }, [])
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
     setLoading(true)
-    setTimeout(() => {
-      const auth = usersAuth.find(u => u.email === email && u.password === password)
-      if (!auth) { setError('Ungültige Zugangsdaten.'); setLoading(false); return }
-      onLogin(auth.memberId)
-    }, 500)
+    try {
+      const memberId = await apiLogin(email, password)
+      onLogin(memberId)
+    } catch (err) {
+      if (err.message === 'Failed to fetch' || err.message.includes('NetworkError')) {
+        // Backend nicht erreichbar — lokaler Fallback
+        const auth = usersAuth.find(u => u.email === email && u.password === password)
+        if (!auth) { setError('Ungültige Zugangsdaten.'); setLoading(false); return }
+        onLogin(auth.memberId)
+      } else {
+        setError(err.message || 'Ungültige Zugangsdaten.')
+        setLoading(false)
+      }
+    }
   }
 
   return (
@@ -736,7 +783,7 @@ function LoginPage({ onLogin, darkMode, onToggleDark, usersAuth = USERS_AUTH }) 
 
 // ─── SIDEBAR ─────────────────────────────────────────────────────────────────
 
-function Sidebar({ active, onNav, collapsed, onToggle, currentUser, onLogout, uiLang = 'en' }) {
+function Sidebar({ active, onNav, collapsed, onToggle, currentUser, onLogout, uiLang = 'en', mobileOpen = false, onMobileClose }) {
   const activeGroup = NAV_GROUPS.find(g => !g.standalone && g.items?.some(i => i.id === active))
 
   const [openGroups, setOpenGroups] = useState(() => {
@@ -766,7 +813,7 @@ function Sidebar({ active, onNav, collapsed, onToggle, currentUser, onLogout, ui
     return (
       <button
         key={item.id}
-        onClick={() => onNav(item.id)}
+        onClick={() => { onNav(item.id); onMobileClose?.() }}
         title={collapsed ? label : undefined}
         className={`w-full flex items-center gap-3 px-3 py-2.5 rounded text-left transition-all duration-150 group
           ${isActive
@@ -782,7 +829,17 @@ function Sidebar({ active, onNav, collapsed, onToggle, currentUser, onLogout, ui
   }
 
   return (
-    <aside className={`flex flex-col bg-[#0a0a0a] border-r border-[#1e293b] transition-all duration-300 ${collapsed ? 'w-16' : 'w-56'} shrink-0`}>
+    <>
+      {/* Mobile backdrop */}
+      {mobileOpen && (
+        <div className="fixed inset-0 bg-black/60 z-40 lg:hidden" onClick={onMobileClose} />
+      )}
+    <aside className={`
+      flex flex-col bg-[#0a0a0a] border-r border-[#1e293b] transition-all duration-300 shrink-0
+      ${collapsed ? 'w-16' : 'w-56'}
+      fixed lg:relative inset-y-0 left-0 z-50
+      ${mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+    `}>
       <div className="flex items-center justify-between px-4 py-5 border-b border-[#1e293b]">
         {!collapsed && (
           <div>
@@ -858,12 +915,13 @@ function Sidebar({ active, onNav, collapsed, onToggle, currentUser, onLogout, ui
         ) : null}
       </div>
     </aside>
+    </>
   )
 }
 
 // ─── TOPBAR ──────────────────────────────────────────────────────────────────
 
-function TopBar({ title, subtitle, currentUser, assignments, clients: allClients = CLIENTS, engagements: allEngagements = ENGAGEMENTS, findings: allFindings = FINDINGS, activeTimer, onClockIn, onClockOut, userPresence, onPresenceChange, darkMode, onToggleDark, reminders = [] }) {
+function TopBar({ title, subtitle, currentUser, assignments, clients: allClients = CLIENTS, engagements: allEngagements = ENGAGEMENTS, findings: allFindings = FINDINGS, activeTimer, onClockIn, onClockOut, userPresence, onPresenceChange, darkMode, onToggleDark, reminders = [], onMobileMenuToggle }) {
   const [showNotifs, setShowNotifs] = useState(false)
   const [showPresence, setShowPresence] = useState(false)
   const [readNotifs, setReadNotifs] = useState(() => {
@@ -873,7 +931,10 @@ function TopBar({ title, subtitle, currentUser, assignments, clients: allClients
     } catch { return new Set() }
   })
   const [elapsed, setElapsed] = useState(0)
-  const { clients: scopeClients, findings: scopeFindings, engagements: scopeEngagements } = getMyScope(currentUser, assignments, allClients, allEngagements, allFindings)
+  const { clients: scopeClients, findings: scopeFindings, engagements: scopeEngagements } = useMemo(
+    () => getMyScope(currentUser, assignments, allClients, allEngagements, allFindings),
+    [currentUser, assignments, allClients, allEngagements, allFindings]
+  )
 
   const isTimerMine = activeTimer?.userId === currentUser?.id
   useEffect(() => {
@@ -883,7 +944,7 @@ function TopBar({ title, subtitle, currentUser, assignments, clients: allClients
     return () => clearInterval(id)
   }, [isTimerMine, activeTimer])
 
-  const allNotifItems = [
+  const allNotifItems = useMemo(() => [
     ...reminders.filter(r => r.toUserIds.includes(currentUser?.id)).map(r => ({
       id: `rem-${r.id}`,
       Icon: Bell,
@@ -905,8 +966,8 @@ function TopBar({ title, subtitle, currentUser, assignments, clients: allClients
       const client = scopeClients.find(c => c.id === e.clientId)
       return { id: `e-${e.id}`, Icon: Activity, color: 'text-cyan-400', bg: 'bg-cyan-500/5 border-cyan-500/10', label: 'Aktives Engagement', body: e.title, sub: client?.name }
     }),
-  ]
-  const notifItems = allNotifItems.filter(n => !readNotifs.has(n.id))
+  ], [reminders, currentUser?.id, scopeFindings, scopeClients, scopeEngagements])
+  const notifItems = useMemo(() => allNotifItems.filter(n => !readNotifs.has(n.id)), [allNotifItems, readNotifs])
   const lsKey = `holysec_read_notifs_${currentUser?.id || 'guest'}`
   const markRead = (id) => setReadNotifs(prev => {
     const next = new Set([...prev, id])
@@ -926,12 +987,17 @@ function TopBar({ title, subtitle, currentUser, assignments, clients: allClients
   const pCfg = presenceCfg[userPresence] || presenceCfg.online
 
   return (
-    <header className="flex items-center justify-between px-6 py-4 border-b border-[#1e293b] bg-[#0a0a0a] shrink-0 relative z-20">
-      <div>
-        <h1 className="text-sm font-mono font-bold text-slate-100 tracking-widest uppercase">{title}</h1>
-        {subtitle && <p className="text-xs font-mono text-slate-600 mt-0.5">{subtitle}</p>}
+    <header className="flex items-center justify-between px-3 lg:px-6 py-3 lg:py-4 border-b border-[#1e293b] bg-[#0a0a0a] shrink-0 relative z-20">
+      <div className="flex items-center gap-3 min-w-0">
+        <button onClick={onMobileMenuToggle} className="lg:hidden p-1.5 rounded text-slate-500 hover:text-cyan-400 hover:bg-slate-800 transition-colors shrink-0">
+          <Menu size={18} />
+        </button>
+        <div className="min-w-0">
+          <h1 className="text-sm font-mono font-bold text-slate-100 tracking-widest uppercase truncate">{title}</h1>
+          {subtitle && <p className="text-xs font-mono text-slate-600 mt-0.5 truncate">{subtitle}</p>}
+        </div>
       </div>
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-1.5 lg:gap-3 shrink-0">
         {/* Dark/Light toggle */}
         <button onClick={onToggleDark}
           className="p-2 rounded text-slate-500 hover:text-cyan-400 hover:bg-slate-800 transition-all"
@@ -955,7 +1021,7 @@ function TopBar({ title, subtitle, currentUser, assignments, clients: allClients
           {showNotifs && (
             <>
               <div className="fixed inset-0 z-40" onClick={() => setShowNotifs(false)} />
-              <div className="absolute right-0 top-11 w-80 bg-[#0f172a] border border-[#1e293b] rounded-xl shadow-2xl z-50 overflow-hidden">
+              <div className="absolute right-0 top-11 w-72 sm:w-80 bg-[#0f172a] border border-[#1e293b] rounded-xl shadow-2xl z-50 overflow-hidden">
                 <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e293b]">
                   <span className="text-xs font-mono font-bold text-slate-200 uppercase tracking-widest">Benachrichtigungen</span>
                   {notifItems.length > 0 && (
@@ -989,23 +1055,23 @@ function TopBar({ title, subtitle, currentUser, assignments, clients: allClients
 
         {/* Clock in/out */}
         {isTimerMine ? (
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-green-500/5 border border-green-500/25 rounded">
+          <div className="flex items-center gap-2 px-2 lg:px-3 py-1.5 bg-green-500/5 border border-green-500/25 rounded">
             <div className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
-            <span className="text-xs font-mono text-green-400 tabular-nums w-16">{formatDuration(elapsed)}</span>
+            <span className="text-xs font-mono text-green-400 tabular-nums w-16 hidden sm:inline">{formatDuration(elapsed)}</span>
             <button onClick={onClockOut}
-              className="flex items-center gap-1 text-[10px] font-mono text-slate-500 hover:text-red-400 transition-colors border-l border-green-500/20 pl-2 ml-1">
-              <StopCircle size={11} /> STOP
+              className="flex items-center gap-1 text-[10px] font-mono text-slate-500 hover:text-red-400 transition-colors sm:border-l sm:border-green-500/20 sm:pl-2 sm:ml-1">
+              <StopCircle size={11} /><span className="hidden sm:inline"> STOP</span>
             </button>
           </div>
         ) : (
           <button onClick={onClockIn}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-green-500/10 border border-green-500/30 rounded text-xs font-mono text-green-400 hover:bg-green-500/20 hover:border-green-500/50 transition-all">
-            <PlayCircle size={13} /> Einstempeln
+            className="flex items-center gap-1.5 px-2 lg:px-3 py-1.5 bg-green-500/10 border border-green-500/30 rounded text-xs font-mono text-green-400 hover:bg-green-500/20 hover:border-green-500/50 transition-all">
+            <PlayCircle size={13} /><span className="hidden sm:inline"> Einstempeln</span>
           </button>
         )}
 
         {/* Presence */}
-        <div className="relative">
+        <div className="relative hidden sm:block">
           <button onClick={() => setShowPresence(v => !v)}
             className="flex items-center gap-2 px-3 py-1.5 bg-[#0f172a] border border-[#1e293b] hover:border-slate-600 rounded transition-all">
             <div className={`relative w-2 h-2 rounded-full ${pCfg.dot}`}>
@@ -1037,40 +1103,39 @@ function TopBar({ title, subtitle, currentUser, assignments, clients: allClients
 
 // ─── DASHBOARD ───────────────────────────────────────────────────────────────
 
+function DashboardBarTooltip({ active, payload, label }) {
+  if (!active || !payload?.length) return null
+  return (
+    <div className="bg-[#0f172a] border border-[#1e293b] rounded px-3 py-2 text-xs font-mono">
+      <p className="text-slate-400">{label}</p>
+      <p className="text-cyan-400">{payload[0].value} Engagements</p>
+    </div>
+  )
+}
+
+function DashboardPieTooltip({ active, payload }) {
+  if (!active || !payload?.length) return null
+  return (
+    <div className="bg-[#0f172a] border border-[#1e293b] rounded px-3 py-2 text-xs font-mono">
+      <p style={{ color: payload[0].payload.color }}>{payload[0].name}: {payload[0].value}</p>
+    </div>
+  )
+}
+
 function Dashboard({ onClientClick, clients: allClients = CLIENTS, currentUser, assignments = {}, findings: allFindingsProp = FINDINGS, engagements: allEngProp = ENGAGEMENTS, onNav, tipsLang = 'de' }) {
-  const { clients: scopedClients } = getMyScope(currentUser, assignments, allClients, allEngProp, allFindingsProp)
-  const activeClients = scopedClients.filter(c => c.status === 'Active').length
-  const openCriticals = allFindingsProp.filter(f => f.severity === 'CRITICAL' && f.status === 'Open').length
-  const totalOpen = allFindingsProp.filter(f => f.status === 'Open').length
-  const plannedEngagements = allEngProp.filter(e => e.status === 'Planned').length
-
-  const CustomTooltip = ({ active, payload, label }) => {
-    if (active && payload && payload.length) {
-      return (
-        <div className="bg-[#0f172a] border border-[#1e293b] rounded px-3 py-2 text-xs font-mono">
-          <p className="text-slate-400">{label}</p>
-          <p className="text-cyan-400">{payload[0].value} Engagements</p>
-        </div>
-      )
-    }
-    return null
-  }
-
-  const PieTooltip = ({ active, payload }) => {
-    if (active && payload && payload.length) {
-      return (
-        <div className="bg-[#0f172a] border border-[#1e293b] rounded px-3 py-2 text-xs font-mono">
-          <p style={{ color: payload[0].payload.color }}>{payload[0].name}: {payload[0].value}</p>
-        </div>
-      )
-    }
-    return null
-  }
+  const { clients: scopedClients } = useMemo(
+    () => getMyScope(currentUser, assignments, allClients, allEngProp, allFindingsProp),
+    [currentUser, assignments, allClients, allEngProp, allFindingsProp]
+  )
+  const activeClients      = useMemo(() => scopedClients.filter(c => c.status === 'Active').length, [scopedClients])
+  const openCriticals      = useMemo(() => allFindingsProp.filter(f => f.severity === 'CRITICAL' && f.status === 'Open').length, [allFindingsProp])
+  const totalOpen          = useMemo(() => allFindingsProp.filter(f => f.status === 'Open').length, [allFindingsProp])
+  const plannedEngagements = useMemo(() => allEngProp.filter(e => e.status === 'Planned').length, [allEngProp])
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-3 lg:p-6 space-y-4 lg:space-y-6">
       {/* KPI row */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
         <KpiCard label="Active Clients" value={activeClients} sub={`${scopedClients.length} total`} icon={Users} accent info={TIPS[tipsLang].activeClients} onClick={() => onNav?.('client-manager', { status: 'Active' })} />
         <KpiCard label="Open Criticals" value={openCriticals} sub="Require immediate action" icon={AlertTriangle} danger info={TIPS[tipsLang].openCriticals} onClick={() => onNav?.('findings', { severity: 'CRITICAL', status: 'Open' })} />
         <KpiCard label="Open Findings" value={totalOpen} sub={`${allFindingsProp.length} total tracked`} icon={ShieldAlert} info={TIPS[tipsLang].openFindings} onClick={() => onNav?.('findings', { status: 'Open' })} />
@@ -1078,8 +1143,8 @@ function Dashboard({ onClientClick, clients: allClients = CLIENTS, currentUser, 
       </div>
 
       {/* Charts row */}
-      <div className="grid grid-cols-3 gap-4">
-        <Panel className="col-span-2">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <Panel className="col-span-1 lg:col-span-2">
           <PanelHeader title="Engagements / Month" subtitle="Last 12 months" info={TIPS[tipsLang].engPerMonth} />
           <div className="p-4 h-52">
             <ResponsiveContainer width="100%" height="100%">
@@ -1087,7 +1152,7 @@ function Dashboard({ onClientClick, clients: allClients = CLIENTS, currentUser, 
                 <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                 <XAxis dataKey="month" tick={{ fill: '#64748b', fontSize: 10, fontFamily: 'monospace' }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fill: '#64748b', fontSize: 10, fontFamily: 'monospace' }} axisLine={false} tickLine={false} />
-                <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(6,182,212,0.05)' }} />
+                <Tooltip content={<DashboardBarTooltip />} cursor={{ fill: 'rgba(6,182,212,0.05)' }} />
                 <Bar dataKey="count" fill="#06b6d4" radius={[3, 3, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -1104,7 +1169,7 @@ function Dashboard({ onClientClick, clients: allClients = CLIENTS, currentUser, 
                     <Cell key={entry.name} fill={entry.color} stroke="transparent" />
                   ))}
                 </Pie>
-                <Tooltip content={<PieTooltip />} />
+                <Tooltip content={<DashboardPieTooltip />} />
               </PieChart>
             </ResponsiveContainer>
             <div className="flex gap-3 mt-1">
@@ -1120,7 +1185,7 @@ function Dashboard({ onClientClick, clients: allClients = CLIENTS, currentUser, 
       </div>
 
       {/* CVSS Distribution + Recent Findings */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Panel>
           <PanelHeader title="CVSS Score Distribution" info={TIPS[tipsLang].cvssDistrib} />
           <div className="p-4 h-44">
@@ -1161,7 +1226,7 @@ function Dashboard({ onClientClick, clients: allClients = CLIENTS, currentUser, 
       {/* Client tiles */}
       <Panel>
         <PanelHeader title="Client Overview" subtitle={`${scopedClients.length} clients total`} info={TIPS[tipsLang].clientOverview} />
-        <div className="p-4 grid grid-cols-3 gap-3">
+        <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {scopedClients.map(client => {
             const ScopeIcon = SCOPE_ICONS[client.scopeType] || Globe
             const days = daysUntil(client.nextTest)
@@ -1220,6 +1285,35 @@ function ClientModal({ client, onSave, onClose }) {
     findings: [], engagements: [], reports: [], openFindings: 0,
   })
 
+  const [locationQuery,   setLocationQuery]   = useState('')
+  const [locationResults, setLocationResults] = useState([])
+  const [locationLoading, setLocationLoading] = useState(false)
+  const locationDebounce = useRef(null)
+
+  useEffect(() => {
+    const q = locationQuery.trim()
+    if (q.length < 2) { setLocationResults([]); return }
+    clearTimeout(locationDebounce.current)
+    locationDebounce.current = setTimeout(async () => {
+      setLocationLoading(true)
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=6&addressdetails=1`, {
+          headers: { 'Accept-Language': 'de' }
+        })
+        const data = await res.json()
+        setLocationResults(data)
+      } catch { setLocationResults([]) }
+      finally { setLocationLoading(false) }
+    }, 400)
+  }, [locationQuery])
+
+  const pickLocation = (result) => {
+    const city = result.address?.city || result.address?.town || result.address?.village || result.address?.municipality || result.address?.county || ''
+    setForm(f => ({ ...f, city, lat: parseFloat(parseFloat(result.lat).toFixed(4)), lng: parseFloat(parseFloat(result.lon).toFixed(4)) }))
+    setLocationQuery('')
+    setLocationResults([])
+  }
+
   const iCls = "w-full bg-[#0a0a0a] border border-[#1e293b] rounded px-3 py-2 text-xs font-mono text-slate-200 placeholder-slate-700 focus:outline-none focus:border-cyan-500/50 transition-colors"
   const sCls = "w-full bg-[#0a0a0a] border border-[#1e293b] rounded px-3 py-2 text-xs font-mono text-slate-400 focus:outline-none focus:border-cyan-500/50 transition-colors"
   const lCls = "text-[10px] font-mono text-slate-600 uppercase tracking-wider block mb-1"
@@ -1237,12 +1331,12 @@ function ClientModal({ client, onSave, onClose }) {
           </h2>
           <button onClick={onClose} className="p-1.5 rounded text-slate-500 hover:text-slate-200 hover:bg-slate-800 transition-all"><X size={14} /></button>
         </div>
-        <form onSubmit={e => { e.preventDefault(); onSave(form); onClose() }} className="p-6 space-y-5">
+        <form onSubmit={e => { e.preventDefault(); onSave(form); onClose() }} className="p-3 lg:p-6 space-y-5">
           <div className="grid grid-cols-2 gap-4">
             <div><label className={lCls}>Name</label><input value={form.name} onChange={e => set('name', e.target.value)} required placeholder="Firmenname" className={iCls} /></div>
             <div><label className={lCls}>Branche</label><input value={form.industry} onChange={e => set('industry', e.target.value)} required placeholder="z.B. Healthcare" className={iCls} /></div>
           </div>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className={lCls}>Status</label>
               <select value={form.status} onChange={e => set('status', e.target.value)} className={sCls}>
@@ -1263,6 +1357,45 @@ function ClientModal({ client, onSave, onClose }) {
             </div>
           </div>
           <div><label className={lCls}>Nächster Test</label><input type="date" value={form.nextTest} onChange={e => set('nextTest', e.target.value)} className={iCls} /></div>
+          <div>
+            <div className="text-[10px] font-mono text-cyan-400/70 uppercase tracking-widest mb-3 border-b border-[#1e293b] pb-1">Standort (für Client Map)</div>
+            <div className="relative">
+              <label className={lCls}>Adresse oder Firmenname suchen</label>
+              <div className="relative">
+                <input
+                  value={locationQuery}
+                  onChange={e => setLocationQuery(e.target.value)}
+                  placeholder="z.B. Sparkasse Köln oder Hauptstraße 1, Berlin..."
+                  className={iCls}
+                />
+                {locationLoading && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2 text-[9px] font-mono text-slate-600 animate-pulse">suche…</div>
+                )}
+              </div>
+              {locationResults.length > 0 && (
+                <div className="absolute z-50 w-full mt-1 bg-[#0f172a] border border-[#1e293b] rounded-lg shadow-2xl overflow-hidden">
+                  {locationResults.map((r, i) => (
+                    <button key={i} type="button" onClick={() => pickLocation(r)}
+                      className="w-full text-left px-3 py-2.5 text-[10px] font-mono text-slate-300 hover:bg-cyan-500/10 hover:text-cyan-300 border-b border-[#1e293b] last:border-0 transition-colors truncate">
+                      {r.display_name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            {form.lat && form.lng ? (
+              <div className="flex items-center justify-between mt-2 px-3 py-2 bg-green-500/5 border border-green-500/20 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-mono text-green-400">✓ {form.city || 'Standort gesetzt'}</span>
+                  <span className="text-[9px] font-mono text-slate-600">{form.lat}, {form.lng}</span>
+                </div>
+                <button type="button" onClick={() => setForm(f => ({ ...f, city: '', lat: null, lng: null }))}
+                  className="text-[9px] font-mono text-slate-600 hover:text-red-400 transition-colors">entfernen</button>
+              </div>
+            ) : (
+              <div className="text-[9px] font-mono text-slate-700 mt-1.5">Ohne Standort erscheint der Client nicht auf der Map.</div>
+            )}
+          </div>
           <div>
             <div className="text-[10px] font-mono text-cyan-400/70 uppercase tracking-widest mb-3 border-b border-[#1e293b] pb-1">Ansprechpartner</div>
             <div className="space-y-3">
@@ -1302,15 +1435,23 @@ function ClientList({ clients: allClients = CLIENTS, onClientClick, currentUser,
   const [editingClient, setEditingClient] = useState(null)
   const [confirmDelete, setConfirmDelete] = useState(null)
   const isAdmin = currentUser?.role === 'Admin'
-  const { clients: scopeClients } = getMyScope(currentUser, assignments, allClients)
+  const { clients: scopeClients } = useMemo(
+    () => getMyScope(currentUser, assignments, allClients),
+    [currentUser, assignments, allClients]
+  )
 
-  const filtered = scopeClients.filter(c => {
+  const filtered = useMemo(() => scopeClients.filter(c => {
     const q = search.toLowerCase()
     const matchSearch = c.name.toLowerCase().includes(q) || c.industry.toLowerCase().includes(q) ||
       (c.contact?.name || '').toLowerCase().includes(q)
     const matchStatus = filterStatus === 'All' || c.status === filterStatus
     return matchSearch && matchStatus
-  })
+  }), [scopeClients, search, filterStatus])
+
+  const CLIENT_STATUS_CYCLE = { Active: 'On Hold', 'On Hold': 'Completed', Completed: 'Pending', Pending: 'Active' }
+  const cycleClientStatus = (client) => {
+    onEdit({ ...client, status: CLIENT_STATUS_CYCLE[client.status] || 'Active' })
+  }
 
   const handleSave = (client) => {
     if (editingClient) onEdit(client)
@@ -1320,7 +1461,7 @@ function ClientList({ clients: allClients = CLIENTS, onClientClick, currentUser,
   }
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="p-3 lg:p-6 space-y-4">
       <div className="flex items-center gap-3 justify-between flex-wrap">
         <div className="flex items-center gap-3">
           <div className="relative">
@@ -1405,9 +1546,13 @@ function ClientList({ clients: allClients = CLIENTS, onClientClick, currentUser,
                       <span className="text-[9px] font-mono text-slate-500 bg-slate-800 border border-[#1e293b] rounded px-1.5 py-0.5" title="Remediation Plans">RP <span className="text-slate-300 font-bold">{rpCount}</span></span>
                     </div>
                   </td>
-                  <td className="px-4 py-3 whitespace-nowrap"><StatusBadge status={client.status} /></td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    {isAdmin
+                      ? <button onClick={e => { e.stopPropagation(); cycleClientStatus(client) }} title={`→ ${CLIENT_STATUS_CYCLE[client.status]}`} className="hover:opacity-70 transition-opacity cursor-pointer"><StatusBadge status={client.status} /></button>
+                      : <StatusBadge status={client.status} />}
+                  </td>
                   <td className="px-4 py-3">
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex items-center gap-1">
                       {isAdmin && (
                         <>
                           <button onClick={() => { setEditingClient(client); setShowModal(true) }}
@@ -1482,7 +1627,7 @@ function ClientDetail({ clientId, onBack, clients: allClients = CLIENTS, tipsLan
   const ScopeIcon = SCOPE_ICONS[client.scopeType] || Globe
 
   return (
-    <div className="p-6 space-y-5">
+    <div className="p-3 lg:p-6 space-y-5">
       <button onClick={onBack} className="flex items-center gap-2 text-xs font-mono text-slate-500 hover:text-cyan-400 transition-colors">
         <ChevronLeft size={14} /> Back to Clients
       </button>
@@ -1522,14 +1667,14 @@ function ClientDetail({ clientId, onBack, clients: allClients = CLIENTS, tipsLan
         return (
           <div className="space-y-4">
             {/* Quick KPIs */}
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <KpiCard label="Open Findings" value={openF} sub="Aktuell offen" icon={ShieldAlert} danger={criticalOpen > 0} info={TIPS[tipsLang].clientOpenFindings} onClick={() => onNav?.('findings', { clientId: client.id, status: 'Open' })} />
               <KpiCard label="Closed" value={closedF} sub="Behoben" icon={CheckCircle2} accent={closedF > 0} info={TIPS[tipsLang].clientClosed} onClick={() => onNav?.('findings', { clientId: client.id, status: 'Closed' })} />
               <KpiCard label="Restbudget" value={`${remainHours}h`} sub={`von ${client.contract.hours}h gesamt`} icon={Clock} danger={hoursPercent > 85} info={TIPS[tipsLang].clientBudget} />
               <KpiCard label="Vertrag endet" value={daysLeft <= 0 ? 'ABGELAUFEN' : `${daysLeft}d`} sub={client.contract.end} icon={Calendar} danger={daysLeft <= 30 && daysLeft >= 0} info={TIPS[tipsLang].clientContractEnd} />
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               {/* Contact */}
               <Panel className="p-4">
                 <div className="flex items-center gap-1.5 mb-3">
@@ -1620,7 +1765,8 @@ function ClientDetail({ clientId, onBack, clients: allClients = CLIENTS, tipsLan
               </button>
             )}
           </PanelHeader>
-          <table className="w-full text-xs font-mono">
+          <div className="overflow-x-auto">
+          <table className="w-full text-xs font-mono min-w-[480px]">
             <thead>
               <tr className="border-b border-[#1e293b]">
                 {['Title', 'CVE', 'CVSS', 'Category', 'Status', 'Date', ''].map(h => (
@@ -1649,6 +1795,7 @@ function ClientDetail({ clientId, onBack, clients: allClients = CLIENTS, tipsLan
               ))}
             </tbody>
           </table>
+          </div>
         </Panel>
       )}
 
@@ -2000,7 +2147,10 @@ function ReminderModal({ finding, engagement, teamMembers, currentUser, onSend, 
 // ─── FINDINGS TRACKER ────────────────────────────────────────────────────────
 
 function FindingsTracker({ currentUser, assignments, findings: allFindingsProp = FINDINGS, onAddFinding, onEditFinding, onDeleteFinding, clients: allClientsProp = CLIENTS, teamMembers = [], engagements = [], onSendReminder, defaultSeverity = 'All', defaultStatus = 'All', defaultClientId = 'All', defaultFindingId = null, tipsLang = 'de' }) {
-  const { findings: scopeFindings, clients: scopeClients } = getMyScope(currentUser, assignments, allClientsProp, engagements, allFindingsProp)
+  const { findings: scopeFindings, clients: scopeClients } = useMemo(
+    () => getMyScope(currentUser, assignments, allClientsProp, engagements, allFindingsProp),
+    [currentUser, assignments, allClientsProp, engagements, allFindingsProp]
+  )
   const [severityFilter, setSeverityFilter] = useState(defaultSeverity)
   const [statusFilter, setStatusFilter] = useState(defaultStatus)
   const [clientFilter, setClientFilter] = useState(defaultClientId)
@@ -2016,15 +2166,14 @@ function FindingsTracker({ currentUser, assignments, findings: allFindingsProp =
 
   useEffect(() => { setFindings(scopeFindings) }, [allFindingsProp])
 
-  const filtered = findings.filter(f => {
-    const client = allClientsProp.find(c => c.id === f.clientId)
+  const filtered = useMemo(() => findings.filter(f => {
     return (
       (severityFilter === 'All' || f.severity === severityFilter) &&
       (statusFilter === 'All' || f.status === statusFilter) &&
       (clientFilter === 'All' || f.clientId === clientFilter) &&
       (f.title.toLowerCase().includes(search.toLowerCase()) || (f.cve || '').includes(search))
     )
-  })
+  }), [findings, severityFilter, statusFilter, clientFilter, search])
 
   const cycleStatus = (id) => {
     const cycle = { 'Open': 'In Remediation', 'In Remediation': 'Closed', 'Closed': 'Open' }
@@ -2037,56 +2186,59 @@ function FindingsTracker({ currentUser, assignments, findings: allFindingsProp =
   }
 
   return (
-    <div className="p-6 space-y-4">
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="relative">
-          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-          <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search CVE / title..."
-            className="bg-[#0f172a] border border-[#1e293b] rounded px-3 py-2 pl-8 text-xs font-mono text-slate-200 placeholder-slate-600 focus:outline-none focus:border-cyan-500/50 w-52" />
+    <div className="p-3 lg:p-6 space-y-4">
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="relative flex-1 min-w-0">
+            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+            <input value={search} onChange={e => setSearch(e.target.value)}
+              placeholder="Search CVE / title..."
+              className="w-full bg-[#0f172a] border border-[#1e293b] rounded px-3 py-2 pl-8 text-xs font-mono text-slate-200 placeholder-slate-600 focus:outline-none focus:border-cyan-500/50" />
+          </div>
+          <select value={clientFilter} onChange={e => setClientFilter(e.target.value)}
+            className="bg-[#0f172a] border border-[#1e293b] rounded px-2 py-1.5 text-xs font-mono text-slate-400 focus:outline-none focus:border-cyan-500/50">
+            <option value="All">All Clients</option>
+            {scopeClients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
         </div>
 
-        <div className="flex items-center gap-1">
-          <Filter size={12} className="text-slate-600" />
-          {['All', 'CRITICAL', 'HIGH', 'MEDIUM', 'LOW'].map(s => (
-            <button key={s} onClick={() => setSeverityFilter(s)}
-              className={`px-2.5 py-1 rounded text-[10px] font-mono border transition-all ${severityFilter === s ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-400' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
-              {s}
-            </button>
-          ))}
-        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1 flex-wrap">
+            <Filter size={12} className="text-slate-600" />
+            {['All', 'CRITICAL', 'HIGH', 'MEDIUM', 'LOW'].map(s => (
+              <button key={s} onClick={() => setSeverityFilter(s)}
+                className={`px-2.5 py-1 rounded text-[10px] font-mono border transition-all ${severityFilter === s ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-400' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
+                {s}
+              </button>
+            ))}
+          </div>
 
-        <div className="flex items-center gap-1">
-          {['All', 'Open', 'In Remediation', 'Closed'].map(s => (
-            <button key={s} onClick={() => setStatusFilter(s)}
-              className={`px-2.5 py-1 rounded text-[10px] font-mono border transition-all ${statusFilter === s ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-400' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
-              {s}
-            </button>
-          ))}
-        </div>
+          <div className="flex items-center gap-1 flex-wrap">
+            {['All', 'Open', 'In Remediation', 'Closed'].map(s => (
+              <button key={s} onClick={() => setStatusFilter(s)}
+                className={`px-2.5 py-1 rounded text-[10px] font-mono border transition-all ${statusFilter === s ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-400' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
+                {s}
+              </button>
+            ))}
+          </div>
 
-        <select value={clientFilter} onChange={e => setClientFilter(e.target.value)}
-          className="bg-[#0f172a] border border-[#1e293b] rounded px-2 py-1.5 text-xs font-mono text-slate-400 focus:outline-none focus:border-cyan-500/50">
-          <option value="All">All Clients</option>
-          {scopeClients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
-
-        <div className="ml-auto flex items-center gap-2">
-          <button className="flex items-center gap-2 px-3 py-1.5 bg-[#0f172a] border border-[#1e293b] rounded text-xs font-mono text-slate-500 hover:text-slate-300 hover:border-slate-600 transition-all">
-            <Download size={12} /> Export CSV
-          </button>
-          {(currentUser?.role === 'Admin' || currentUser?.role === 'Senior Pentester' || currentUser?.role === 'Pentester') && (
-            <button onClick={() => setShowNewModal(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-red-500/40 bg-red-500/10 text-xs font-mono text-red-400 hover:bg-red-500/20 transition-all">
-              <Plus size={12} /> Finding
+          <div className="flex items-center gap-2 ml-auto">
+            <button className="flex items-center gap-2 px-3 py-1.5 bg-[#0f172a] border border-[#1e293b] rounded text-xs font-mono text-slate-500 hover:text-slate-300 hover:border-slate-600 transition-all">
+              <Download size={12} /> Export CSV
             </button>
-          )}
+            {(currentUser?.role === 'Admin' || currentUser?.role === 'Senior Pentester' || currentUser?.role === 'Pentester') && (
+              <button onClick={() => setShowNewModal(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-red-500/40 bg-red-500/10 text-xs font-mono text-red-400 hover:bg-red-500/20 transition-all">
+                <Plus size={12} /> Finding
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
       {showNewModal && (
         <NewFindingModal
-          clients={scopeClients.length ? scopeClients : allClientsProp}
+          clients={allClientsProp}
           currentUser={currentUser}
           onSave={f => { onAddFinding?.(f); setShowNewModal(false) }}
           onClose={() => setShowNewModal(false)}
@@ -2112,18 +2264,18 @@ function FindingsTracker({ currentUser, assignments, findings: allFindingsProp =
             return (
               <div key={f.id} className="hover:bg-slate-800/20 transition-colors">
                 <div
-                  className="px-4 py-3 flex items-center gap-4 cursor-pointer"
+                  className="px-4 py-3 flex items-center gap-3 cursor-pointer"
                   onClick={() => setExpandedId(isExpanded ? null : f.id)}
                 >
-                  <div className="w-20 shrink-0"><SeverityBadge severity={f.severity} /></div>
+                  <div className="w-16 sm:w-20 shrink-0"><SeverityBadge severity={f.severity} /></div>
                   <div className="flex-1 min-w-0">
                     <div className="text-xs font-mono text-slate-200 font-medium truncate">{f.title}</div>
-                    <div className="text-[10px] font-mono text-slate-600">{client?.name} · {f.category} · {f.date}</div>
+                    <div className="text-[10px] font-mono text-slate-600 truncate">{client?.name} · {f.category} · {f.date}</div>
                   </div>
-                  <div className="w-40 shrink-0"><CvssBar score={f.cvss} /></div>
+                  <div className="hidden sm:block w-40 shrink-0"><CvssBar score={f.cvss} /></div>
                   {f.cve
-                    ? <div className="w-32 shrink-0 text-[10px] font-mono text-cyan-400">{f.cve}</div>
-                    : <div className="w-32 shrink-0 text-[10px] font-mono text-slate-700">No CVE</div>
+                    ? <div className="hidden sm:block w-28 shrink-0 text-[10px] font-mono text-cyan-400">{f.cve}</div>
+                    : <div className="hidden sm:block w-28 shrink-0 text-[10px] font-mono text-slate-700">No CVE</div>
                   }
                   <div className="shrink-0">
                     {currentUser?.role !== 'Junior Pentester'
@@ -2284,8 +2436,8 @@ const TYPE_COLORS = {
 
 // ─── NEW ENGAGEMENT MODAL ─────────────────────────────────────────────────────
 
-function NewEngagementModal({ clients = CLIENTS, currentUser, onSave, onClose }) {
-  const [form, setForm] = useState({
+function NewEngagementModal({ clients = CLIENTS, currentUser, onSave, onClose, existing = null }) {
+  const [form, setForm] = useState(existing ? { ...existing } : {
     title: '',
     clientId: clients[0]?.id || '',
     type: 'Web',
@@ -2307,7 +2459,7 @@ function NewEngagementModal({ clients = CLIENTS, currentUser, onSave, onClose })
 
   const handleSubmit = () => {
     if (!canSubmit) return
-    onSave({ id: `e_${Date.now()}`, ...form })
+    onSave(existing ? { ...form } : { id: `e_${Date.now()}`, ...form })
     onClose()
   }
 
@@ -2316,7 +2468,7 @@ function NewEngagementModal({ clients = CLIENTS, currentUser, onSave, onClose })
       <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl p-6 w-full max-w-md space-y-4 shadow-2xl">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-mono font-semibold text-slate-100 flex items-center gap-2">
-            <Calendar size={14} className="text-cyan-400" /> Neues Engagement
+            <Calendar size={14} className="text-cyan-400" /> {existing ? 'Engagement bearbeiten' : 'Neues Engagement'}
           </h3>
           <button onClick={onClose} className="text-slate-500 hover:text-slate-300 transition-colors"><X size={16} /></button>
         </div>
@@ -2404,19 +2556,25 @@ function NewEngagementModal({ clients = CLIENTS, currentUser, onSave, onClose })
   )
 }
 
-function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, currentUser, groups = [], engagements: allEngProp = ENGAGEMENTS, onAddEngagement, onStatusChange, clients: allClientsProp = CLIENTS, defaultStatus = 'All', defaultClientId = null, tipsLang = 'de', pendingReports = {}, onEngDetail }) {
+function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, currentUser, groups = [], engagements: allEngProp = ENGAGEMENTS, onAddEngagement, onStatusChange, onEdit, onDelete, clients: allClientsProp = CLIENTS, defaultStatus = 'All', defaultClientId = null, tipsLang = 'de', pendingReports = {}, onEngDetail }) {
   const ENG_STATUS_CYCLE = { Planned: 'Active', Active: 'On Hold', 'On Hold': 'Completed', Completed: 'Planned' }
   const canCycleStatus = currentUser?.role === 'Admin' || currentUser?.role === 'Senior Pentester'
+  const isAdmin = currentUser?.role === 'Admin'
   const [view, setView] = useState('timeline')
   const [selectedEng, setSelectedEng] = useState(null)
   const [assignModal, setAssignModal] = useState(null)
   const [statusFilter, setStatusFilter] = useState(defaultStatus)
   const [myOnly, setMyOnly] = useState(false)
   const [showNewModal, setShowNewModal] = useState(false)
+  const [editingEng, setEditingEng] = useState(null)
+  const [confirmDelete, setConfirmDelete] = useState(null)
 
-  const { engagements: scopeEngagements } = getMyScope(currentUser, assignments, allClientsProp, allEngProp)
+  const { engagements: scopeEngagements } = useMemo(
+    () => getMyScope(currentUser, assignments, allClientsProp, allEngProp),
+    [currentUser, assignments, allClientsProp, allEngProp]
+  )
 
-  const sorted = [...scopeEngagements]
+  const sorted = useMemo(() => [...scopeEngagements]
     .filter(e => statusFilter === 'All' || e.status === statusFilter)
     .filter(e => !myOnly || (assignments[e.id] || []).includes(currentUser?.id))
     .filter(e => !defaultClientId || e.clientId === defaultClientId)
@@ -2425,20 +2583,28 @@ function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, curre
       if (!a.createdAt && b.createdAt) return 1
       if (a.createdAt && b.createdAt) return b.createdAt - a.createdAt
       return new Date(a.start) - new Date(b.start)
-    })
+    }), [scopeEngagements, statusFilter, myOnly, assignments, currentUser?.id, defaultClientId])
 
   return (
-    <div className="p-6 space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div className="flex gap-1">
-          {['timeline', 'list'].map(v => (
-            <button key={v} onClick={() => setView(v)}
-              className={`px-3 py-1.5 rounded text-xs font-mono capitalize border transition-all ${view === v ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-400' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
-              {v}
+    <div className="p-3 lg:p-6 space-y-4">
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex gap-1">
+            {['timeline', 'list'].map(v => (
+              <button key={v} onClick={() => setView(v)}
+                className={`px-3 py-1.5 rounded text-xs font-mono capitalize border transition-all ${view === v ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-400' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
+                {v}
+              </button>
+            ))}
+          </div>
+          {currentUser?.role === 'Admin' && (
+            <button onClick={() => setShowNewModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-cyan-500/40 bg-cyan-500/10 text-xs font-mono text-cyan-400 hover:bg-cyan-500/20 transition-all">
+              <Plus size={12} /> Erstellen
             </button>
-          ))}
+          )}
         </div>
-        <div className="flex gap-1 flex-wrap">
+        <div className="flex items-center gap-1 flex-wrap">
           <button onClick={() => setMyOnly(v => !v)}
             className={`px-2.5 py-1 rounded text-[10px] font-mono border transition-all ${myOnly ? 'border-purple-500/50 bg-purple-500/10 text-purple-400' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
             ★ Meine
@@ -2450,31 +2616,38 @@ function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, curre
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-3">
-          <div className="flex gap-3 text-xs font-mono">
-            {Object.entries(PHASE_COLORS).map(([phase, cfg]) => (
-              <div key={phase} className="flex items-center gap-1.5">
-                <div className={`w-2 h-2 rounded-full ${cfg.bg}`} />
-                <span className="text-slate-500">{phase}</span>
-              </div>
-            ))}
-          </div>
-          {currentUser?.role === 'Admin' && (
-            <button onClick={() => setShowNewModal(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-cyan-500/40 bg-cyan-500/10 text-xs font-mono text-cyan-400 hover:bg-cyan-500/20 transition-all">
-              <Plus size={12} /> Erstellen
-            </button>
-          )}
+        <div className="flex gap-3 text-xs font-mono flex-wrap">
+          {Object.entries(PHASE_COLORS).map(([phase, cfg]) => (
+            <div key={phase} className="flex items-center gap-1.5">
+              <div className={`w-2 h-2 rounded-full ${cfg.bg}`} />
+              <span className="text-slate-500">{phase}</span>
+            </div>
+          ))}
         </div>
       </div>
 
       {showNewModal && (
-        <NewEngagementModal
-          clients={allClientsProp}
-          currentUser={currentUser}
+        <NewEngagementModal clients={allClientsProp} currentUser={currentUser}
           onSave={eng => { onAddEngagement?.(eng); setShowNewModal(false) }}
-          onClose={() => setShowNewModal(false)}
-        />
+          onClose={() => setShowNewModal(false)} />
+      )}
+      {editingEng && (
+        <NewEngagementModal clients={allClientsProp} currentUser={currentUser} existing={editingEng}
+          onSave={eng => { onEdit?.(eng); setEditingEng(null) }}
+          onClose={() => setEditingEng(null)} />
+      )}
+      {confirmDelete && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#0f172a] border border-red-500/30 rounded-xl p-6 w-full max-w-sm shadow-2xl space-y-4">
+            <h3 className="text-sm font-mono font-bold text-red-400">Engagement löschen?</h3>
+            <p className="text-xs font-mono text-slate-400">„{confirmDelete.title}" wird unwiderruflich entfernt.</p>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setConfirmDelete(null)} className="px-4 py-2 rounded border border-[#1e293b] text-xs font-mono text-slate-400 hover:text-slate-200 transition-all">Abbrechen</button>
+              <button onClick={() => { onDelete?.(confirmDelete.id); setConfirmDelete(null) }}
+                className="px-4 py-2 rounded bg-red-500/20 border border-red-500/40 text-xs font-mono text-red-400 hover:bg-red-500/30 transition-all">Löschen</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {view === 'timeline' && (
@@ -2490,13 +2663,13 @@ function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, curre
                   className={`border border-[#1e293b] border-l-2 rounded-lg p-3 cursor-pointer hover:border-slate-600 transition-all ${borderColor}`}
                   onClick={() => setSelectedEng(selectedEng?.id === eng.id ? null : eng)}
                 >
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-3">
-                      <span className="text-xs font-mono font-semibold text-slate-100">{eng.title}</span>
-                      <span className="text-[10px] font-mono text-slate-600">— {client?.name}</span>
+                  <div className="flex flex-wrap items-start justify-between gap-1 mb-2">
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-xs font-mono font-semibold text-slate-100 truncate">{eng.title}</span>
+                      <span className="text-[10px] font-mono text-slate-600">{client?.name}</span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-mono text-slate-600">{eng.start} → {eng.end}</span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-[10px] font-mono text-slate-600 hidden sm:inline">{eng.start} → {eng.end}</span>
                       {canCycleStatus
                         ? <button onClick={e => { e.stopPropagation(); onStatusChange?.(eng.id) }} title={`→ ${ENG_STATUS_CYCLE[eng.status]}`} className="hover:opacity-75 transition-opacity"><StatusBadge status={eng.status} /></button>
                         : <StatusBadge status={eng.status} />
@@ -2583,7 +2756,8 @@ function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, curre
       {view === 'list' && (
         <Panel>
           <PanelHeader title="All Engagements" subtitle={`${sorted.length} von ${scopeEngagements.length}`} info={TIPS[tipsLang].engList} />
-          <table className="w-full text-xs font-mono">
+          <div className="overflow-x-auto">
+          <table className="w-full text-xs font-mono min-w-[600px]">
             <thead>
               <tr className="border-b border-[#1e293b]">
                 {['Engagement', 'Client', 'Type', 'Start', 'End', 'Status', 'Phases', 'Team', ''].map(h => (
@@ -2623,19 +2797,33 @@ function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, curre
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      {(currentUser?.role === 'Admin' || (assignments[eng.id] || []).includes(currentUser?.id)) && (
-                        <button
-                          onClick={() => onEngDetail?.(eng.id)}
-                          className={`flex items-center gap-1 px-2 py-0.5 rounded border text-[9px] font-mono transition-all ${pendingReports[eng.id] ? 'border-yellow-500/40 text-yellow-400 hover:bg-yellow-500/10' : 'border-[#1e293b] text-slate-600 hover:text-slate-300 hover:border-slate-600'}`}>
-                          <FileText size={9} /> Details
-                        </button>
-                      )}
+                      <div className="flex items-center gap-1">
+                        {(isAdmin || (assignments[eng.id] || []).includes(currentUser?.id)) && (
+                          <button onClick={() => onEngDetail?.(eng.id)}
+                            className={`flex items-center gap-1 px-2 py-0.5 rounded border text-[9px] font-mono transition-all ${pendingReports[eng.id] ? 'border-yellow-500/40 text-yellow-400 hover:bg-yellow-500/10' : 'border-[#1e293b] text-slate-600 hover:text-slate-300 hover:border-slate-600'}`}>
+                            <FileText size={9} /> Details
+                          </button>
+                        )}
+                        {isAdmin && (
+                          <button onClick={() => setEditingEng(eng)} title="Bearbeiten"
+                            className="p-1 rounded text-slate-600 hover:text-cyan-400 hover:bg-cyan-500/10 transition-all">
+                            <Edit3 size={11} />
+                          </button>
+                        )}
+                        {isAdmin && (
+                          <button onClick={() => setConfirmDelete(eng)} title="Löschen"
+                            className="p-1 rounded text-slate-600 hover:text-red-400 hover:bg-red-400/10 transition-all">
+                            <Trash2 size={11} />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 )
               })}
             </tbody>
           </table>
+          </div>
         </Panel>
       )}
     </div>
@@ -2646,24 +2834,27 @@ function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, curre
 
 function ClientRadar({ onClientClick, currentUser, assignments, clients: allClients = CLIENTS, tipsLang = 'de' }) {
   const [radarFilter, setRadarFilter] = useState('All')
-  const { clients: scopeClients } = getMyScope(currentUser, assignments, allClients)
+  const { clients: scopeClients } = useMemo(
+    () => getMyScope(currentUser, assignments, allClients),
+    [currentUser, assignments, allClients]
+  )
 
-  const activeCount   = scopeClients.filter(c => c.status === 'Active').length
-  const onHoldCount   = scopeClients.filter(c => c.status === 'On Hold').length
-  const criticalCount = scopeClients.filter(c => c.criticality === 'CRITICAL').length
-  const upcomingCount = scopeClients.filter(c => { const d = daysUntil(c.nextTest); return d >= 0 && d <= 30 }).length
+  const activeCount   = useMemo(() => scopeClients.filter(c => c.status === 'Active').length, [scopeClients])
+  const onHoldCount   = useMemo(() => scopeClients.filter(c => c.status === 'On Hold').length, [scopeClients])
+  const criticalCount = useMemo(() => scopeClients.filter(c => c.criticality === 'CRITICAL').length, [scopeClients])
+  const upcomingCount = useMemo(() => scopeClients.filter(c => { const d = daysUntil(c.nextTest); return d >= 0 && d <= 30 }).length, [scopeClients])
 
-  const displayed = scopeClients.filter(c => {
+  const displayed = useMemo(() => scopeClients.filter(c => {
     if (radarFilter === 'active')   return c.status === 'Active'
     if (radarFilter === 'onhold')   return c.status === 'On Hold'
     if (radarFilter === 'critical') return c.criticality === 'CRITICAL'
     if (radarFilter === 'upcoming') return daysUntil(c.nextTest) >= 0 && daysUntil(c.nextTest) <= 30
     return true
-  })
+  }), [scopeClients, radarFilter])
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="grid grid-cols-4 gap-4">
+    <div className="p-3 lg:p-6 space-y-4 lg:space-y-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
         <KpiCard label="Active Clients" value={activeCount} sub={`${scopeClients.length} gesamt`} icon={Activity}
           accent={radarFilter === 'All'} active={radarFilter === 'active'}
           info={TIPS[tipsLang].radarActive}
@@ -2683,7 +2874,7 @@ function ClientRadar({ onClientClick, currentUser, assignments, clients: allClie
       </div>
       <Panel>
         <PanelHeader title="Client Radar" subtitle={`${displayed.length} von ${scopeClients.length} Clients`} />
-        <div className="p-4 grid grid-cols-3 gap-3">
+        <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {displayed.map(client => {
             const ScopeIcon = SCOPE_ICONS[client.scopeType] || Globe
             const days = daysUntil(client.nextTest)
@@ -2763,7 +2954,7 @@ function NewReportModal({ onAdd, onClose }) {
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="p-3 lg:p-6 space-y-4">
           <div>
             <label className="text-[10px] font-mono text-slate-600 uppercase tracking-wider block mb-1.5">Titel *</label>
             <input required value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
@@ -2921,26 +3112,38 @@ function ReportingCenter({ reports, onStatusChange, onAdd, currentUser, assignme
   const [filterType, setFilterType] = useState('All')
   const [showNewReport, setShowNewReport] = useState(false)
 
-  const { engagements: scopeEngagements } = getMyScope(currentUser, assignments)
-  const scopeEngIds = new Set(scopeEngagements.map(e => e.id))
-  const scopeReports = currentUser?.role === 'Admin'
-    ? reports
-    : reports.filter(r => !r.engagementId || scopeEngIds.has(r.engagementId))
+  const { engagements: scopeEngagements } = useMemo(
+    () => getMyScope(currentUser, assignments),
+    [currentUser, assignments]
+  )
+  const scopeReports = useMemo(() => {
+    if (['Admin', 'Senior Pentester', 'Pentester'].includes(currentUser?.role)) return reports
+    const ids = new Set(scopeEngagements.map(e => e.id))
+    return reports.filter(r => !r.engagementId || ids.has(r.engagementId))
+  }, [currentUser?.role, reports, scopeEngagements])
 
-  const clientsWithReports = CLIENTS.filter(c => scopeReports.some(r => r.clientId === c.id))
-  const filtered = scopeReports.filter(r =>
+  const clientsWithReports = useMemo(() => CLIENTS.filter(c => scopeReports.some(r => r.clientId === c.id)), [scopeReports])
+  const filtered = useMemo(() => scopeReports.filter(r =>
     (filterClient === 'All' || r.clientId === filterClient) &&
     (filterType === 'All' || r.type === filterType)
-  )
+  ), [scopeReports, filterClient, filterType])
 
   return (
-    <div className="p-6 space-y-4">
-      <div className="flex items-center gap-3 flex-wrap">
-        <select value={filterClient} onChange={e => setFilterClient(e.target.value)}
-          className="bg-[#0f172a] border border-[#1e293b] rounded px-2 py-1.5 text-xs font-mono text-slate-400 focus:outline-none focus:border-cyan-500/50">
-          <option value="All">All Clients</option>
-          {clientsWithReports.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
+    <div className="p-3 lg:p-6 space-y-4">
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <select value={filterClient} onChange={e => setFilterClient(e.target.value)}
+            className="bg-[#0f172a] border border-[#1e293b] rounded px-2 py-1.5 text-xs font-mono text-slate-400 focus:outline-none focus:border-cyan-500/50">
+            <option value="All">All Clients</option>
+            {clientsWithReports.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+          {currentUser?.role !== 'Junior Pentester' && (
+            <button onClick={() => setShowNewReport(true)}
+              className="flex items-center gap-2 px-3 py-1.5 bg-cyan-500/10 border border-cyan-500/30 rounded text-xs font-mono text-cyan-400 hover:bg-cyan-500/20 transition-all">
+              <Plus size={12} /> New Report
+            </button>
+          )}
+        </div>
         <div className="flex gap-1 flex-wrap">
           {['All', 'Technical Report', 'Executive Summary', 'Remediation Plan'].map(t => (
             <button key={t} onClick={() => setFilterType(t)}
@@ -2949,15 +3152,9 @@ function ReportingCenter({ reports, onStatusChange, onAdd, currentUser, assignme
             </button>
           ))}
         </div>
-        {currentUser?.role !== 'Junior Pentester' && (
-          <button onClick={() => setShowNewReport(true)}
-            className="ml-auto flex items-center gap-2 px-3 py-1.5 bg-cyan-500/10 border border-cyan-500/30 rounded text-xs font-mono text-cyan-400 hover:bg-cyan-500/20 transition-all">
-            <Plus size={12} /> New Report
-          </button>
-        )}
       </div>
 
-      <div className="grid grid-cols-3 gap-3 mb-2">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-2">
         {[
           { type: 'Technical Report',  info: 'Detaillierter Befundbericht für das IT- und Security-Team. Enthält alle Findings mit CVSS-Score, Proof of Concept, CVE-Referenz und konkreter Remediation-Empfehlung. Zielgruppe: Admins, Entwickler, Sicherheitsteam.' },
           { type: 'Executive Summary', info: 'Kompakte Managementzusammenfassung ohne tiefe technische Details. Zeigt Gesamtrisikobewertung, kritische Findings und priorisierte Handlungsempfehlungen auf 1–2 Seiten. Zielgruppe: Geschäftsführung, CISO, Vorstand.' },
@@ -3068,7 +3265,7 @@ function AboutHolySec() {
       </Panel>
 
       {/* Drei Heiligen Könige — Die Erklärung */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Panel className="p-6 border-t-2 border-t-cyan-400">
           <div className="flex items-center gap-2 mb-3">
             <Star size={16} className="text-cyan-400" />
@@ -3121,7 +3318,7 @@ function AboutHolySec() {
           <div className="text-[10px] font-mono text-slate-600 uppercase tracking-widest mb-2">Die drei Wörter hinter HolySec</div>
           <p className="text-sm font-mono text-slate-400">Was die Heiligen Drei Könige mitbrachten — was wir liefern.</p>
         </div>
-        <div className="grid grid-cols-3 gap-4 text-center">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center">
           {[
             { word: 'GOLD', sub: 'Aurum', desc: 'Wert ohne Kompromiss. Jeder Report, jede Zeile Code, jeder Befund hat Substanz — kein Füllwerk, kein Boilerplate.', color: 'text-yellow-400', border: 'border-yellow-400/30', bg: 'bg-yellow-400/5', icon: Star },
             { word: 'WEIHRAUCH', sub: 'Incensum', desc: 'Klarheit durch Rauch. Wir durchdringen Nebel und Verschleierung — in Netzwerken, in Code, in Prozessen. Wir bringen Licht ins Dunkel.', color: 'text-cyan-400', border: 'border-cyan-400/30', bg: 'bg-cyan-400/5', icon: Eye },
@@ -3139,15 +3336,23 @@ function AboutHolySec() {
 
       {/* Leif's Profile */}
       <Panel className="p-6">
-        <div className="flex items-start gap-6">
-          <div className="p-4 bg-[#0a0a0a] border border-[#1e293b] rounded-lg">
+        <div className="flex flex-col sm:flex-row items-start gap-4 sm:gap-6">
+          <div className="p-4 bg-[#0a0a0a] border border-[#1e293b] rounded-lg shrink-0">
             <div className="w-16 h-16 rounded-full bg-gradient-to-br from-cyan-500 to-cyan-700 flex items-center justify-center">
               <span className="text-xl font-mono font-black text-black">LB</span>
             </div>
           </div>
-          <div className="flex-1">
-            <h2 className="text-lg font-mono font-bold text-slate-100">Leif Balthasar</h2>
-            <p className="text-sm font-mono text-cyan-400 mb-3">Founder & Senior Penetration Tester — HolySec</p>
+          <div className="flex-1 min-w-0">
+            <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
+              <div>
+                <h2 className="text-lg font-mono font-bold text-slate-100">Leif Balthasar</h2>
+                <p className="text-sm font-mono text-cyan-400">Founder & Senior Penetration Tester — HolySec</p>
+              </div>
+              <div>
+                <div className="text-[10px] font-mono text-slate-600 mb-1">Contact</div>
+                <div className="text-xs font-mono text-cyan-400">leif@holysec.de</div>
+              </div>
+            </div>
             <p className="text-xs font-mono text-slate-400 leading-relaxed mb-4">
               Spezialist für offensive Sicherheit mit Fokus auf Red Team Operations, Cloud-Security und OT/ICS-Assessments. Methodisch verankert in PTES, OWASP und MITRE ATT&CK — pragmatisch in der Ausführung.
             </p>
@@ -3156,10 +3361,6 @@ function AboutHolySec() {
                 <span key={tag} className="text-[10px] font-mono text-slate-500 bg-slate-800 border border-[#1e293b] rounded px-2 py-0.5">{tag}</span>
               ))}
             </div>
-          </div>
-          <div className="text-right">
-            <div className="text-[10px] font-mono text-slate-600 mb-1">Contact</div>
-            <div className="text-xs font-mono text-cyan-400">leif@holysec.de</div>
           </div>
         </div>
       </Panel>
@@ -3199,11 +3400,22 @@ function UserManagementSection({ members, currentUser, onAdd, onRemove, onEdit }
           </button>
         </PanelHeader>
 
-        <div className="flex items-center gap-3 px-5 py-3 border-b border-[#1e293b] flex-wrap">
-          <div className="relative">
-            <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Name oder E-Mail..."
-              className="bg-[#0a0a0a] border border-[#1e293b] rounded px-3 py-1.5 pl-8 text-xs font-mono text-slate-200 placeholder-slate-600 focus:outline-none focus:border-cyan-500/50 w-52" />
+        <div className="flex flex-col gap-2 px-5 py-3 border-b border-[#1e293b]">
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="relative flex-1 min-w-0">
+              <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Name oder E-Mail..."
+                className="w-full bg-[#0a0a0a] border border-[#1e293b] rounded px-3 py-1.5 pl-8 text-xs font-mono text-slate-200 placeholder-slate-600 focus:outline-none focus:border-cyan-500/50" />
+            </div>
+            <div className="flex gap-1 items-center shrink-0">
+              <span className="text-[10px] font-mono text-slate-600">Sortieren:</span>
+              {[['name', 'Name'], ['role', 'Rolle'], ['email', 'E-Mail']].map(([k, label]) => (
+                <button key={k} onClick={() => setSortBy(k)}
+                  className={`px-2 py-1 rounded text-[10px] font-mono border transition-all ${sortBy === k ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-400' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
           <div className="flex gap-1 flex-wrap">
             {['All', 'Admin', 'Senior Pentester', 'Pentester', 'Junior Pentester'].map(r => (
@@ -3213,18 +3425,10 @@ function UserManagementSection({ members, currentUser, onAdd, onRemove, onEdit }
               </button>
             ))}
           </div>
-          <div className="flex gap-1 ml-auto items-center">
-            <span className="text-[10px] font-mono text-slate-600 mr-1">Sortieren:</span>
-            {[['name', 'Name'], ['role', 'Rolle'], ['email', 'E-Mail']].map(([k, label]) => (
-              <button key={k} onClick={() => setSortBy(k)}
-                className={`px-2 py-1 rounded text-[10px] font-mono border transition-all ${sortBy === k ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-400' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
-                {label}
-              </button>
-            ))}
-          </div>
         </div>
 
-        <table className="w-full text-xs font-mono">
+        <div className="overflow-x-auto">
+        <table className="w-full text-xs font-mono min-w-[480px]">
           <thead>
             <tr className="border-b border-[#1e293b]">
               {['Benutzer', 'Rolle', 'E-Mail', 'Status', ''].map(h => (
@@ -3280,6 +3484,7 @@ function UserManagementSection({ members, currentUser, onAdd, onRemove, onEdit }
             })}
           </tbody>
         </table>
+        </div>
       </Panel>
 
       {showAdd && <AddEditMemberModal onAdd={onAdd} onClose={() => setShowAdd(false)} />}
@@ -3323,7 +3528,7 @@ function TimeTrackingSection({ entries, currentUser, members }) {
   const [range, setRange] = useState('week')
 
   const now = new Date()
-  const startOfWeek = new Date(now); startOfWeek.setDate(now.getDate() - now.getDay() + 1); startOfWeek.setHours(0,0,0,0)
+  const startOfWeek = new Date(now); startOfWeek.setDate(now.getDate() - (now.getDay() === 0 ? 6 : now.getDay() - 1)); startOfWeek.setHours(0,0,0,0)
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
   const rangeStart = range === 'week' ? startOfWeek : startOfMonth
 
@@ -3347,7 +3552,7 @@ function TimeTrackingSection({ entries, currentUser, members }) {
   return (
     <div className="space-y-5">
       {/* KPIs */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
         <KpiCard label="Heute" value={formatDurationShort(todaySecs) || '—'} sub="Erfasste Zeit" icon={Clock} accent />
         <KpiCard label={range === 'week' ? 'Diese Woche' : 'Dieser Monat'} value={formatDurationShort(totalSecs) || '—'} sub={`${visible.length} Einträge`} icon={Timer} />
         <KpiCard label="Ø pro Tag" value={range === 'week' ? formatDurationShort(Math.floor(totalSecs / 5)) || '—' : formatDurationShort(Math.floor(totalSecs / now.getDate())) || '—'} sub="Durchschnitt" icon={TrendingUp} />
@@ -3407,7 +3612,8 @@ function TimeTrackingSection({ entries, currentUser, members }) {
             Noch keine Einträge für diesen Zeitraum.
           </div>
         ) : (
-          <table className="w-full text-xs font-mono">
+          <div className="overflow-x-auto">
+          <table className="w-full text-xs font-mono min-w-[360px]">
             <thead>
               <tr className="border-b border-[#1e293b]">
                 {[...(isAdmin ? ['Mitarbeiter'] : []), 'Datum', 'Beginn', 'Ende', 'Dauer'].map(h => (
@@ -3436,6 +3642,7 @@ function TimeTrackingSection({ entries, currentUser, members }) {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </Panel>
     </div>
@@ -3449,6 +3656,26 @@ function SettingsPage({ members, currentUser, onAdd, onRemove, onEdit, timeEntri
   const [notifications, setNotifications] = useState(true)
   const [nickname, setNickname]   = useState(currentUser?.nickname || '')
   const [nickSaved, setNickSaved] = useState(false)
+  const [exportRange,    setExportRange]    = useState('week')
+  const [exportMemberId, setExportMemberId] = useState('all')
+
+  const exportRangeStart = useMemo(() => {
+    const now = new Date()
+    if (exportRange === 'week') {
+      const d = new Date(now)
+      d.setDate(now.getDate() - (now.getDay() === 0 ? 6 : now.getDay() - 1))
+      d.setHours(0, 0, 0, 0)
+      return d
+    }
+    return new Date(now.getFullYear(), now.getMonth(), 1)
+  }, [exportRange])
+
+  const exportTargets = useMemo(() => {
+    const hasEntries = m => timeEntries.some(e => e.userId === m.id && new Date(e.date) >= exportRangeStart)
+    return exportMemberId === 'all'
+      ? members.filter(hasEntries)
+      : members.filter(m => m.id === exportMemberId)
+  }, [exportMemberId, members, timeEntries, exportRangeStart])
 
   const tabs = [
     ...(isAdmin ? [{ id: 'users',   label: 'Benutzerverwaltung', icon: Users2 }] : []),
@@ -3461,19 +3688,21 @@ function SettingsPage({ members, currentUser, onAdd, onRemove, onEdit, timeEntri
   ]
 
   return (
-    <div className="p-6 max-w-5xl space-y-5">
-      <div className="flex gap-1 border-b border-[#1e293b]">
-        {tabs.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-            className={`flex items-center gap-2 px-4 py-2.5 text-xs font-mono border-b-2 transition-all ${tab === t.id ? 'border-cyan-400 text-cyan-400' : 'border-transparent text-slate-500 hover:text-slate-300'}`}>
-            <t.icon size={12} /> {t.label}
-          </button>
-        ))}
-        {!isAdmin && (
-          <div className="ml-auto flex items-center gap-1.5 text-[10px] font-mono text-slate-600 pb-2 pr-1">
-            <Lock size={10} /> Erweiterte Einstellungen nur für Admins
-          </div>
-        )}
+    <div className="p-3 lg:p-6 max-w-5xl space-y-5">
+      <div className="overflow-x-auto">
+        <div className="flex gap-1 border-b border-[#1e293b] min-w-max">
+          {tabs.map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)}
+              className={`flex items-center gap-2 px-4 py-2.5 text-xs font-mono border-b-2 transition-all whitespace-nowrap ${tab === t.id ? 'border-cyan-400 text-cyan-400' : 'border-transparent text-slate-500 hover:text-slate-300'}`}>
+              <t.icon size={12} /> {t.label}
+            </button>
+          ))}
+          {!isAdmin && (
+            <div className="ml-auto flex items-center gap-1.5 text-[10px] font-mono text-slate-600 pb-2 pr-1 whitespace-nowrap">
+              <Lock size={10} /> Erweiterte Einstellungen nur für Admins
+            </div>
+          )}
+        </div>
       </div>
 
       {tab === 'users' && isAdmin && (
@@ -3489,19 +3718,19 @@ function SettingsPage({ members, currentUser, onAdd, onRemove, onEdit, timeEntri
               { label: 'Unternehmen', sub: 'Firmenname für Kundendokumente', defaultValue: 'HolySec', editable: isAdmin },
               { label: 'E-Mail Adresse', sub: 'Kontaktadresse für Reports', defaultValue: currentUser?.email || '', editable: isAdmin },
             ].map(({ label, sub, defaultValue, editable }) => (
-              <div key={label} className="flex items-center justify-between">
+              <div key={label} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5">
                 <div>
                   <div className="text-xs font-mono text-slate-200">{label}</div>
                   <div className="text-[10px] font-mono text-slate-600">{sub}</div>
                 </div>
                 {editable
                   ? <input defaultValue={defaultValue}
-                      className="bg-[#0a0a0a] border border-[#1e293b] rounded px-3 py-1.5 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500/50 w-52" />
-                  : <span className="text-xs font-mono text-slate-400 bg-[#0a0a0a] border border-[#1e293b] rounded px-3 py-1.5 w-52 truncate select-none">{defaultValue}</span>
+                      className="bg-[#0a0a0a] border border-[#1e293b] rounded px-3 py-1.5 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500/50 w-full sm:w-52" />
+                  : <span className="text-xs font-mono text-slate-400 bg-[#0a0a0a] border border-[#1e293b] rounded px-3 py-1.5 w-full sm:w-52 truncate select-none">{defaultValue}</span>
                 }
               </div>
             ))}
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5">
               <div>
                 <div className="text-xs font-mono text-slate-200">Nickname <span className="text-slate-700">(optional)</span></div>
                 <div className="text-[10px] font-mono text-slate-600">Wird im Team-Bereich und in Chats angezeigt</div>
@@ -3511,12 +3740,12 @@ function SettingsPage({ members, currentUser, onAdd, onRemove, onEdit, timeEntri
                   value={nickname}
                   onChange={e => setNickname(e.target.value)}
                   placeholder="z.B. CyberLeif"
-                  className="bg-[#0a0a0a] border border-[#1e293b] rounded px-3 py-1.5 text-xs font-mono text-slate-200 placeholder-slate-700 focus:outline-none focus:border-cyan-500/50 w-44"
+                  className="bg-[#0a0a0a] border border-[#1e293b] rounded px-3 py-1.5 text-xs font-mono text-slate-200 placeholder-slate-700 focus:outline-none focus:border-cyan-500/50 flex-1 sm:w-44 sm:flex-none"
                 />
                 <button
                   onClick={() => { onEdit({ ...currentUser, nickname }); setNickSaved(true); setTimeout(() => setNickSaved(false), 2000) }}
                   disabled={nickSaved}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 border rounded text-xs font-mono transition-all ${nickSaved ? 'bg-green-500/15 border-green-500/40 text-green-400 cursor-default' : 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/20'}`}>
+                  className={`flex items-center gap-1.5 px-3 py-1.5 border rounded text-xs font-mono transition-all shrink-0 ${nickSaved ? 'bg-green-500/15 border-green-500/40 text-green-400 cursor-default' : 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/20'}`}>
                   {nickSaved ? <><CheckCircle2 size={11} /> Gespeichert</> : 'Speichern'}
                 </button>
               </div>
@@ -3527,7 +3756,7 @@ function SettingsPage({ members, currentUser, onAdd, onRemove, onEdit, timeEntri
                 <div className="text-[10px] font-mono text-slate-600">Alerts für bevorstehende Engagements</div>
               </div>
               <button onClick={() => setNotifications(v => !v)}
-                className={`relative w-10 h-5 rounded-full border transition-all ${notifications ? 'bg-cyan-500 border-cyan-500' : 'bg-slate-800 border-[#1e293b]'}`}>
+                className={`relative w-10 h-5 rounded-full border transition-all shrink-0 ${notifications ? 'bg-cyan-500 border-cyan-500' : 'bg-slate-800 border-[#1e293b]'}`}>
                 <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${notifications ? 'left-5' : 'left-0.5'}`} />
               </button>
             </div>
@@ -3537,16 +3766,16 @@ function SettingsPage({ members, currentUser, onAdd, onRemove, onEdit, timeEntri
                 <div className="text-[10px] font-mono text-slate-600">Dark Mode / Light Mode</div>
               </div>
               <button onClick={onToggleDark}
-                className={`relative w-10 h-5 rounded-full border transition-all ${darkMode ? 'bg-cyan-500 border-cyan-500' : 'bg-slate-800 border-[#1e293b]'}`}>
+                className={`relative w-10 h-5 rounded-full border transition-all shrink-0 ${darkMode ? 'bg-cyan-500 border-cyan-500' : 'bg-slate-800 border-[#1e293b]'}`}>
                 <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${darkMode ? 'left-5' : 'left-0.5'}`} />
               </button>
             </div>
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <div>
                 <div className="text-xs font-mono text-slate-200">Seitensprache</div>
                 <div className="text-[10px] font-mono text-slate-600">Sprache der Navigation und Beschriftungen</div>
               </div>
-              <div className="flex gap-1">
+              <div className="flex gap-1 shrink-0">
                 {['de', 'en'].map(lang => (
                   <button key={lang} onClick={() => onUiLangChange?.(lang)}
                     className={`px-3 py-1.5 rounded border text-xs font-mono uppercase tracking-wider transition-all ${uiLang === lang ? 'bg-cyan-500/15 border-cyan-500/50 text-cyan-400' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
@@ -3555,12 +3784,12 @@ function SettingsPage({ members, currentUser, onAdd, onRemove, onEdit, timeEntri
                 ))}
               </div>
             </div>
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <div>
                 <div className="text-xs font-mono text-slate-200">Tooltip-Sprache</div>
                 <div className="text-[10px] font-mono text-slate-600">Sprache der Info-Tooltips und Hinweise</div>
               </div>
-              <div className="flex gap-1">
+              <div className="flex gap-1 shrink-0">
                 {['de', 'en'].map(lang => (
                   <button key={lang} onClick={() => onTipsLangChange?.(lang)}
                     className={`px-3 py-1.5 rounded border text-xs font-mono uppercase tracking-wider transition-all ${tipsLang === lang ? 'bg-cyan-500/15 border-cyan-500/50 text-cyan-400' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
@@ -3574,7 +3803,62 @@ function SettingsPage({ members, currentUser, onAdd, onRemove, onEdit, timeEntri
       )}
 
       {tab === 'time' && (
-        <TimeTrackingSection entries={timeEntries} currentUser={currentUser} members={members} />
+        <>
+          <TimeTrackingSection entries={timeEntries} currentUser={currentUser} members={members} />
+          {isAdmin && (
+            <Panel>
+              <PanelHeader title="PDF Export" subtitle="Zeiterfassung eines Mitarbeiters oder aller Mitarbeiter ausgeben" />
+              <div className="p-5 space-y-5">
+                {/* Zeitraum */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-xs font-mono text-slate-200">Zeitraum</div>
+                    <div className="text-[10px] font-mono text-slate-600">Welcher Zeitraum soll exportiert werden?</div>
+                  </div>
+                  <div className="flex gap-1">
+                    {[['week', 'Diese Woche'], ['month', 'Dieser Monat']].map(([val, label]) => (
+                      <button key={val} onClick={() => setExportRange(val)}
+                        className={`px-3 py-1.5 rounded text-xs font-mono border transition-all ${exportRange === val ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-400' : 'border-[#1e293b] text-slate-500 hover:text-slate-300 hover:border-slate-600'}`}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Mitarbeiter */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-xs font-mono text-slate-200">Mitarbeiter</div>
+                    <div className="text-[10px] font-mono text-slate-600">Einzelne Person oder alle auf einmal</div>
+                  </div>
+                  <select
+                    value={exportMemberId}
+                    onChange={e => setExportMemberId(e.target.value)}
+                    className="bg-[#0a0a0a] border border-[#1e293b] rounded px-3 py-1.5 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500/50 w-52">
+                    <option value="all">Alle Mitarbeiter</option>
+                    {members.map(m => (
+                      <option key={m.id} value={m.id}>{m.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Export-Button */}
+                <div className="flex justify-end pt-1">
+                  <button
+                    onClick={() => exportTargets.forEach((m, i) => setTimeout(() => exportTimePDF(m, timeEntries, exportRange), i * 300))}
+                    disabled={exportTargets.length === 0}
+                    className="flex items-center gap-2 px-4 py-2 bg-cyan-500/10 border border-cyan-500/30 rounded text-xs font-mono text-cyan-400 hover:bg-cyan-500/20 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
+                    <Download size={13} />
+                    {exportMemberId === 'all'
+                      ? `${exportTargets.length} PDF${exportTargets.length !== 1 ? 's' : ''} generieren`
+                      : 'PDF generieren'
+                    }
+                  </button>
+                </div>
+              </div>
+            </Panel>
+          )}
+        </>
       )}
 
       {tab === 'api' && isAdmin && (
@@ -3763,11 +4047,13 @@ function AssignTeamModal({ engagement, teamMembers, assigned, onSave, onClose, g
   })
 
   const applyGroup = (group) => setSelected(prev => {
-    const next = new Set(prev)
-    const allIn = group.memberIds.every(id => next.has(id))
-    if (allIn) group.memberIds.forEach(id => next.delete(id))
-    else group.memberIds.forEach(id => next.add(id))
-    return next
+    const allIn = group.memberIds.every(id => prev.has(id))
+    if (allIn) {
+      const next = new Set(prev)
+      group.memberIds.forEach(id => next.delete(id))
+      return next
+    }
+    return new Set(group.memberIds)
   })
 
   return (
@@ -3836,7 +4122,76 @@ function AssignTeamModal({ engagement, teamMembers, assigned, onSave, onClose, g
   )
 }
 
-function EngagementDetail({ engagementId, onBack, clients: allClients = CLIENTS, teamMembers = [], assignments = {}, engagements: allEngagements = ENGAGEMENTS, pendingReports = {}, onSetPendingReport }) {
+function downloadReportTemplate(engagement, client) {
+  const doc = new jsPDF()
+  const now = new Date().toLocaleDateString('de-DE')
+
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(18)
+  doc.text('HolySec — Report Template', 14, 20)
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(10)
+  doc.setTextColor(100, 116, 139)
+  doc.text(`Engagement: ${engagement?.title || '—'}`, 14, 30)
+  doc.text(`Client: ${client?.name || '—'}  |  Typ: ${engagement?.type || '—'}  |  Erstellt: ${now}`, 14, 37)
+  doc.setTextColor(0, 0, 0)
+  doc.setDrawColor(30, 41, 59); doc.line(14, 42, 196, 42)
+
+  const section = (title, y) => {
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(11)
+    doc.setFillColor(15, 23, 42); doc.rect(14, y, 182, 7, 'F')
+    doc.setTextColor(6, 182, 212); doc.text(title, 17, y + 5.2)
+    doc.setTextColor(0, 0, 0); doc.setFont('helvetica', 'normal'); doc.setFontSize(9)
+    return y + 12
+  }
+  const placeholder = (label, y, lines = 1) => {
+    doc.setTextColor(100, 116, 139); doc.text(label, 17, y)
+    doc.setTextColor(0, 0, 0)
+    for (let i = 0; i < lines; i++) {
+      doc.setDrawColor(200, 200, 200); doc.line(17, y + 4 + i * 7, 193, y + 4 + i * 7)
+    }
+    return y + 6 + lines * 7
+  }
+
+  let y = section('1. Executive Summary', 48)
+  y = placeholder('Kurzbeschreibung der Ergebnisse und Risikoeinschätzung', y, 4)
+
+  y = section('2. Scope & Methodik', y + 4)
+  doc.setFontSize(9); doc.setTextColor(60, 60, 60)
+  if (client?.scope?.ipRanges?.length) doc.text(`IP-Ranges: ${client.scope.ipRanges.join(', ')}`, 17, y); y += 6
+  if (client?.scope?.domains?.length)  doc.text(`Domains:   ${client.scope.domains.join(', ')}`,  17, y); y += 6
+  doc.setTextColor(0, 0, 0)
+  y = placeholder('Vorgehensweise / Angriffsphasen', y + 2, 2)
+
+  y = section('3. Findings', y + 4)
+  const fHeaders = ['#', 'Titel', 'Schwere', 'CVSS', 'Status']
+  const fColX    = [17, 28, 120, 150, 170]
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(8)
+  fHeaders.forEach((h, i) => doc.text(h, fColX[i], y)); y += 3
+  doc.line(17, y, 193, y); y += 4
+  doc.setFont('helvetica', 'normal')
+  for (let i = 1; i <= 8; i++) {
+    doc.setTextColor(160, 160, 160)
+    doc.text(`${i}`, fColX[0], y)
+    doc.text('______________________________', fColX[1], y)
+    doc.text('_______', fColX[2], y)
+    doc.text('___', fColX[3], y)
+    doc.text('______', fColX[4], y)
+    doc.setTextColor(0, 0, 0); y += 7
+    if (y > 265) { doc.addPage(); y = 20 }
+  }
+
+  y += 2; y = section('4. Empfehlungen', y)
+  y = placeholder('Priorisierte Maßnahmen und Handlungsempfehlungen', y, 5)
+
+  y += 4; y = section('5. Unterschriften & Freigabe', y)
+  doc.setFontSize(9)
+  doc.text('Erstellt von (Pentester):', 17, y);          doc.line(65, y, 120, y);  y += 10
+  doc.text('Geprüft von (Senior / Admin):', 17, y);     doc.line(75, y, 130, y);  y += 10
+  doc.text('Datum der Freigabe:', 17, y);                doc.line(58, y, 100, y)
+
+  doc.save(`holysec_template_${(engagement?.title || 'report').replace(/\s+/g, '_')}.pdf`)
+}
+
+function EngagementDetail({ engagementId, onBack, clients: allClients = CLIENTS, teamMembers = [], assignments = {}, engagements: allEngagements = ENGAGEMENTS, pendingReports = {}, onSetPendingReport, currentUser, onEdit, onDelete }) {
   const engagement = allEngagements.find(e => e.id === engagementId)
   const client = allClients.find(c => c.id === engagement?.clientId)
   const assignedMembers = (assignments[engagementId] || []).map(uid => teamMembers.find(t => t.id === uid)).filter(Boolean)
@@ -3847,6 +4202,9 @@ function EngagementDetail({ engagementId, onBack, clients: allClients = CLIENTS,
   const [dragOver, setDragOver] = useState(false)
   const [saved, setSaved] = useState(false)
   const fileRef = useRef(null)
+  const isAdmin = currentUser?.role === 'Admin'
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
   const handleFile = (file) => {
     if (!file || file.type !== 'application/pdf') return
@@ -3880,11 +4238,43 @@ function EngagementDetail({ engagementId, onBack, clients: allClients = CLIENTS,
   const hoursPercent = hoursUsed / hoursTotal
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Back */}
-      <button onClick={onBack} className="flex items-center gap-2 text-xs font-mono text-slate-500 hover:text-cyan-400 transition-colors">
-        <ChevronLeft size={14} /> Zurück zu Engagements
-      </button>
+    <div className="p-3 lg:p-6 space-y-6">
+      {showEditModal && (
+        <NewEngagementModal clients={allClients} currentUser={currentUser} existing={engagement}
+          onSave={eng => { onEdit?.(eng); setShowEditModal(false) }}
+          onClose={() => setShowEditModal(false)} />
+      )}
+      {confirmDelete && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#0f172a] border border-red-500/30 rounded-xl p-6 w-full max-w-sm shadow-2xl space-y-4">
+            <h3 className="text-sm font-mono font-bold text-red-400">Engagement löschen?</h3>
+            <p className="text-xs font-mono text-slate-400">„{engagement.title}" wird unwiderruflich entfernt.</p>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setConfirmDelete(false)} className="px-4 py-2 rounded border border-[#1e293b] text-xs font-mono text-slate-400 hover:text-slate-200 transition-all">Abbrechen</button>
+              <button onClick={() => { onDelete?.(engagementId); onBack?.() }}
+                className="px-4 py-2 rounded bg-red-500/20 border border-red-500/40 text-xs font-mono text-red-400 hover:bg-red-500/30 transition-all">Löschen</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Back + Admin Actions */}
+      <div className="flex items-center justify-between">
+        <button onClick={onBack} className="flex items-center gap-2 text-xs font-mono text-slate-500 hover:text-cyan-400 transition-colors">
+          <ChevronLeft size={14} /> Zurück zu Engagements
+        </button>
+        {isAdmin && (
+          <div className="flex items-center gap-2">
+            <button onClick={() => setShowEditModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 border border-[#1e293b] rounded text-xs font-mono text-slate-400 hover:text-cyan-400 hover:border-cyan-500/40 transition-all">
+              <Edit3 size={12} /> Bearbeiten
+            </button>
+            <button onClick={() => setConfirmDelete(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 border border-red-500/20 rounded text-xs font-mono text-red-500/70 hover:text-red-400 hover:border-red-500/40 transition-all">
+              <Trash2 size={12} /> Löschen
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* Header */}
       <div className="flex items-start justify-between">
@@ -3898,9 +4288,9 @@ function EngagementDetail({ engagementId, onBack, clients: allClients = CLIENTS,
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left column: Engagement + Team */}
-        <div className="col-span-2 space-y-5">
+        <div className="col-span-1 lg:col-span-2 space-y-5">
 
           {/* Engagement Details */}
           <Panel>
@@ -3963,80 +4353,121 @@ function EngagementDetail({ engagementId, onBack, clients: allClients = CLIENTS,
           </Panel>
 
           {/* Report Upload */}
-          <Panel>
-            <PanelHeader title="Report" subtitle="Wird bei Completion automatisch veröffentlicht"
-              info={pendingReport ? `Ausstehend: ${pendingReport.title}` : undefined} />
-            <div className="p-4 space-y-4">
-              {/* Drag & Drop Zone */}
-              <div
-                onDragOver={e => { e.preventDefault(); setDragOver(true) }}
-                onDragLeave={() => setDragOver(false)}
-                onDrop={handleDrop}
-                onClick={() => fileRef.current?.click()}
-                className={`relative border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${dragOver ? 'border-cyan-400/60 bg-cyan-400/5' : uploadedFile ? 'border-green-500/40 bg-green-500/5' : 'border-[#1e293b] hover:border-slate-600 hover:bg-slate-800/20'}`}>
-                <input ref={fileRef} type="file" accept=".pdf" className="hidden" onChange={e => handleFile(e.target.files[0])} />
-                {uploadedFile ? (
-                  <div className="space-y-1">
-                    <FileText size={28} className="text-green-400 mx-auto mb-2" />
-                    <div className="text-sm font-mono font-medium text-green-400">{uploadedFile.name}</div>
-                    {uploadedFile.size && <div className="text-[10px] font-mono text-slate-500">{(uploadedFile.size / 1024).toFixed(1)} KB</div>}
-                    <div className="text-[10px] font-mono text-slate-600 mt-1">Klicken oder neues PDF hierher ziehen zum Ersetzen</div>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <Download size={28} className="text-slate-600 mx-auto mb-2" />
-                    <div className="text-sm font-mono text-slate-400">PDF hierher ziehen</div>
-                    <div className="text-[10px] font-mono text-slate-600">oder klicken zum Auswählen</div>
-                  </div>
-                )}
-              </div>
+          {(() => {
+            const canApprove = ['Admin', 'Senior Pentester'].includes(currentUser?.role)
+            const approvalStatus = pendingReport?.approvalStatus || null
+            const isApproved  = approvalStatus === 'approved'
+            const isSubmitted = approvalStatus === 'submitted'
 
-              {/* Form */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[9px] font-mono text-slate-600 uppercase mb-1.5 block">Titel *</label>
-                  <input
-                    value={reportForm.title}
-                    onChange={e => setReportForm(f => ({ ...f, title: e.target.value }))}
-                    placeholder="z.B. Technical Report Q2 2026"
-                    className="w-full bg-[#0a0a0a] border border-[#1e293b] rounded-lg px-3 py-2.5 text-xs font-mono text-slate-200 placeholder-slate-700 focus:outline-none focus:border-cyan-500/50 transition-colors"
-                  />
-                </div>
-                <div>
-                  <label className="text-[9px] font-mono text-slate-600 uppercase mb-1.5 block">Typ</label>
-                  <select
-                    value={reportForm.type}
-                    onChange={e => setReportForm(f => ({ ...f, type: e.target.value }))}
-                    className="w-full bg-[#0a0a0a] border border-[#1e293b] rounded-lg px-3 py-2.5 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500/50 transition-colors">
-                    <option>Technical Report</option>
-                    <option>Executive Summary</option>
-                    <option>Remediation Plan</option>
-                  </select>
-                </div>
-              </div>
+            const handleSubmit = () => {
+              if (!reportForm.title.trim()) return
+              onSetPendingReport?.(engagementId, { ...reportForm, fileName: uploadedFile?.name || null, approvalStatus: 'submitted' })
+              setSaved(true); setTimeout(() => setSaved(false), 2000)
+            }
+            const handleApprove = () => {
+              onSetPendingReport?.(engagementId, { ...pendingReport, approvalStatus: 'approved' })
+            }
 
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleSave}
-                  disabled={!reportForm.title.trim()}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-cyan-500/40 bg-cyan-500/10 text-xs font-mono text-cyan-400 hover:bg-cyan-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-all">
-                  {saved ? <CheckCircle2 size={12} /> : <FileText size={12} />}
-                  {saved ? 'Gespeichert!' : 'Report hinterlegen'}
-                </button>
-                {pendingReport?.title && (
-                  <button onClick={handleDiscard}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-red-500/30 bg-red-500/5 text-xs font-mono text-red-400 hover:bg-red-500/10 transition-all">
-                    <X size={12} /> Verwerfen
+            return (
+              <Panel>
+                <PanelHeader title="Report" subtitle="Ausgefüllte Vorlage einreichen zur Freigabe">
+                  <button onClick={() => downloadReportTemplate(engagement, client)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 border border-[#1e293b] rounded text-[10px] font-mono text-slate-400 hover:text-cyan-400 hover:border-cyan-500/40 transition-all">
+                    <Download size={11} /> Vorlage herunterladen
                   </button>
-                )}
-                {pendingReport?.title && (
-                  <span className="ml-auto flex items-center gap-1.5 px-2.5 py-1 rounded bg-yellow-400/10 border border-yellow-400/20 text-[10px] font-mono text-yellow-400">
-                    <Clock size={9} /> Ausstehend: {pendingReport.title}
-                  </span>
-                )}
-              </div>
-            </div>
-          </Panel>
+                </PanelHeader>
+                <div className="p-4 space-y-4">
+                  {/* Freigabe-Status */}
+                  {isApproved && (
+                    <div className="flex items-center gap-2 px-4 py-3 bg-green-500/5 border border-green-500/20 rounded-lg">
+                      <CheckCircle2 size={14} className="text-green-400" />
+                      <span className="text-xs font-mono text-green-400 font-bold">Freigegeben</span>
+                      <span className="text-[10px] font-mono text-slate-500 ml-1">— {pendingReport.title}</span>
+                    </div>
+                  )}
+                  {isSubmitted && canApprove && (
+                    <div className="flex items-center justify-between px-4 py-3 bg-yellow-400/5 border border-yellow-400/20 rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <Clock size={13} className="text-yellow-400" />
+                        <span className="text-xs font-mono text-yellow-400">Warte auf Freigabe — {pendingReport.title}</span>
+                      </div>
+                      <button onClick={handleApprove}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-green-500/10 border border-green-500/30 rounded text-[10px] font-mono text-green-400 hover:bg-green-500/20 transition-all">
+                        <CheckCircle2 size={11} /> Freigeben
+                      </button>
+                    </div>
+                  )}
+                  {isSubmitted && !canApprove && (
+                    <div className="flex items-center gap-2 px-4 py-3 bg-yellow-400/5 border border-yellow-400/20 rounded-lg">
+                      <Clock size={13} className="text-yellow-400" />
+                      <span className="text-xs font-mono text-yellow-400">Eingereicht — warte auf Freigabe durch Senior / Admin</span>
+                    </div>
+                  )}
+
+                  {/* Drag & Drop Zone */}
+                  {!isApproved && (
+                    <>
+                      <div
+                        onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+                        onDragLeave={() => setDragOver(false)}
+                        onDrop={handleDrop}
+                        onClick={() => fileRef.current?.click()}
+                        className={`relative border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${dragOver ? 'border-cyan-400/60 bg-cyan-400/5' : uploadedFile ? 'border-green-500/40 bg-green-500/5' : 'border-[#1e293b] hover:border-slate-600 hover:bg-slate-800/20'}`}>
+                        <input ref={fileRef} type="file" accept=".pdf" className="hidden" onChange={e => handleFile(e.target.files[0])} />
+                        {uploadedFile ? (
+                          <div className="space-y-1">
+                            <FileText size={28} className="text-green-400 mx-auto mb-2" />
+                            <div className="text-sm font-mono font-medium text-green-400">{uploadedFile.name}</div>
+                            {uploadedFile.size && <div className="text-[10px] font-mono text-slate-500">{(uploadedFile.size / 1024).toFixed(1)} KB</div>}
+                            <div className="text-[10px] font-mono text-slate-600 mt-1">Klicken oder neues PDF hierher ziehen zum Ersetzen</div>
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            <Download size={28} className="text-slate-600 mx-auto mb-2" />
+                            <div className="text-sm font-mono text-slate-400">Ausgefüllte Vorlage hier ablegen</div>
+                            <div className="text-[10px] font-mono text-slate-600">oder klicken zum Auswählen · nur PDF</div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Form */}
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-[9px] font-mono text-slate-600 uppercase mb-1.5 block">Titel *</label>
+                          <input value={reportForm.title} onChange={e => setReportForm(f => ({ ...f, title: e.target.value }))}
+                            placeholder="z.B. Technical Report Q2 2026"
+                            className="w-full bg-[#0a0a0a] border border-[#1e293b] rounded-lg px-3 py-2.5 text-xs font-mono text-slate-200 placeholder-slate-700 focus:outline-none focus:border-cyan-500/50 transition-colors" />
+                        </div>
+                        <div>
+                          <label className="text-[9px] font-mono text-slate-600 uppercase mb-1.5 block">Typ</label>
+                          <select value={reportForm.type} onChange={e => setReportForm(f => ({ ...f, type: e.target.value }))}
+                            className="w-full bg-[#0a0a0a] border border-[#1e293b] rounded-lg px-3 py-2.5 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500/50 transition-colors">
+                            <option>Technical Report</option>
+                            <option>Executive Summary</option>
+                            <option>Remediation Plan</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button onClick={handleSubmit} disabled={!reportForm.title.trim()}
+                          className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-cyan-500/40 bg-cyan-500/10 text-xs font-mono text-cyan-400 hover:bg-cyan-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-all">
+                          {saved ? <CheckCircle2 size={12} /> : <FileText size={12} />}
+                          {saved ? 'Eingereicht!' : isSubmitted ? 'Erneut einreichen' : 'Zur Freigabe einreichen'}
+                        </button>
+                        {pendingReport?.title && (
+                          <button onClick={handleDiscard}
+                            className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-red-500/30 bg-red-500/5 text-xs font-mono text-red-400 hover:bg-red-500/10 transition-all">
+                            <X size={12} /> Verwerfen
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              </Panel>
+            )
+          })()}
         </div>
 
         {/* Right column: Client Info */}
@@ -4135,8 +4566,8 @@ function TeamPage({ members, currentUser, onAdd, onRemove, assignments, engageme
   const displayedMembers = roleFilter === 'All' ? members : members.filter(m => m.role === roleFilter)
 
   return (
-    <div className="p-6 space-y-5">
-      <div className="grid grid-cols-5 gap-3">
+    <div className="p-3 lg:p-6 space-y-5">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         <KpiCard label="Team Size" value={members.length} sub={`${members.filter(m => m.status === 'Active').length} aktiv`}
           icon={Users2} accent={roleFilter === 'All'} active={false}
           onClick={() => setRoleFilter('All')} />
@@ -4149,7 +4580,7 @@ function TeamPage({ members, currentUser, onAdd, onRemove, assignments, engageme
 
       <Panel>
         <PanelHeader title="Operator Directory" subtitle={`${displayedMembers.length} von ${members.length} Mitarbeitern`}>
-          <div className="flex items-center gap-1 mr-1">
+          <div className="flex items-center gap-1 flex-wrap mr-1">
             {['All', 'Admin', 'Senior Pentester', 'Pentester', 'Junior Pentester'].map(r => (
               <button key={r} onClick={() => setRoleFilter(r)}
                 className={`px-2.5 py-1 rounded text-[10px] font-mono border transition-all ${roleFilter === r ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-400' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
@@ -4165,7 +4596,7 @@ function TeamPage({ members, currentUser, onAdd, onRemove, assignments, engageme
           )}
         </PanelHeader>
 
-        <div className="p-4 grid grid-cols-3 gap-3">
+        <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {displayedMembers.map(member => {
             const isSelf = member.id === currentUser?.id
             const activeEngs = memberEngCount(member.id)
@@ -4250,12 +4681,71 @@ function TeamPage({ members, currentUser, onAdd, onRemove, assignments, engageme
 
 // ─── MEMBER TIME DETAIL MODAL ────────────────────────────────────────────────
 
+function exportTimePDF(member, allEntries, range) {
+  const now = new Date()
+  const startOfWeek = new Date(now)
+  startOfWeek.setDate(now.getDate() - (now.getDay() === 0 ? 6 : now.getDay() - 1))
+  startOfWeek.setHours(0, 0, 0, 0)
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+
+  const memberEntries = allEntries.filter(e => e.userId === member.id)
+  const filtered = memberEntries.filter(e => {
+    if (range === 'week')  return new Date(e.date) >= startOfWeek
+    if (range === 'month') return new Date(e.date) >= startOfMonth
+    return true
+  })
+
+  const totalSecs = memberEntries.reduce((s, e) => s + e.duration, 0)
+  const weekSecs  = memberEntries.filter(e => new Date(e.date) >= startOfWeek).reduce((s, e) => s + e.duration, 0)
+  const monthSecs = memberEntries.filter(e => new Date(e.date) >= startOfMonth).reduce((s, e) => s + e.duration, 0)
+  const rangeLabel = range === 'week' ? 'Diese Woche' : range === 'month' ? 'Dieser Monat' : 'Gesamt'
+
+  const doc = new jsPDF()
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(16)
+  doc.text('HolySec — Zeiterfassung', 14, 18)
+  doc.setFontSize(11); doc.setFont('helvetica', 'normal')
+  doc.text(`Mitarbeiter: ${member.name}${member.nickname ? ' (' + member.nickname + ')' : ''}`, 14, 28)
+  doc.text(`Rolle: ${member.role}`, 14, 35)
+  doc.text(`Zeitraum: ${rangeLabel}`, 14, 42)
+  doc.text(`Export: ${now.toLocaleDateString('de-DE')}`, 14, 49)
+  doc.setDrawColor(30, 41, 59); doc.line(14, 54, 196, 54)
+
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(10)
+  doc.text('Zusammenfassung', 14, 62)
+  doc.setFont('helvetica', 'normal')
+  doc.text(`Gesamt:           ${formatDuration(totalSecs)}`, 14, 69)
+  doc.text(`Diese Woche:      ${formatDuration(weekSecs)}`, 14, 76)
+  doc.text(`Dieser Monat:     ${formatDuration(monthSecs)}`, 14, 83)
+  doc.text(`Exportierter Zeitraum: ${formatDuration(filtered.reduce((s, e) => s + e.duration, 0))}`, 14, 90)
+  doc.line(14, 95, 196, 95)
+
+  doc.setFont('helvetica', 'bold')
+  doc.text(`Einträge (${rangeLabel})`, 14, 103)
+  const headers = ['Datum', 'Beginn', 'Ende', 'Dauer (hh:mm:ss)']
+  const colX = [14, 55, 85, 120]
+  headers.forEach((h, i) => doc.text(h, colX[i], 111))
+  doc.line(14, 114, 196, 114)
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9)
+  let y = 121
+  ;[...filtered].reverse().forEach(e => {
+    if (y > 270) { doc.addPage(); y = 20 }
+    doc.text(e.date, colX[0], y)
+    doc.text(e.start, colX[1], y)
+    doc.text(e.end || '—', colX[2], y)
+    doc.text(formatDuration(e.duration), colX[3], y)
+    y += 7
+  })
+
+  const rangeStr = range === 'week' ? 'woche' : 'monat'
+  doc.save(`holysec_zeit_${member.name.replace(/\s+/g, '_')}_${rangeStr}_${now.toISOString().split('T')[0]}.pdf`)
+}
+
 function MemberTimeDetailModal({ member, timeEntries, onClose, onExport }) {
   const entries = timeEntries.filter(e => e.userId === member.id)
   const totalSecs = entries.reduce((s, e) => s + e.duration, 0)
 
   const now = new Date()
-  const startOfWeek = new Date(now); startOfWeek.setDate(now.getDate() - now.getDay() + 1); startOfWeek.setHours(0,0,0,0)
+  const startOfWeek = new Date(now); startOfWeek.setDate(now.getDate() - (now.getDay() === 0 ? 6 : now.getDay() - 1)); startOfWeek.setHours(0,0,0,0)
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
   const weekSecs  = entries.filter(e => new Date(e.date) >= startOfWeek).reduce((s, e) => s + e.duration, 0)
   const monthSecs = entries.filter(e => new Date(e.date) >= startOfMonth).reduce((s, e) => s + e.duration, 0)
@@ -4449,23 +4939,36 @@ function GroupModal({ group, teamMembers, engagements = ENGAGEMENTS, onSave, onC
 }
 
 const CRITICALITY_COLOR = {
-  CRITICAL: { fill: '#f87171', stroke: '#ef4444' },
-  HIGH:     { fill: '#fb923c', stroke: '#f97316' },
-  MEDIUM:   { fill: '#facc15', stroke: '#eab308' },
-  LOW:      { fill: '#4ade80', stroke: '#22c55e' },
+  CRITICAL: { fill: '#ef4444', stroke: '#991b1b' },
+  HIGH:     { fill: '#f97316', stroke: '#9a3412' },
+  MEDIUM:   { fill: '#eab308', stroke: '#854d0e' },
+  LOW:      { fill: '#22c55e', stroke: '#14532d' },
 }
 
-function ClientMapPage({ clients = CLIENTS, darkMode = true, onClientClick }) {
-  const mapDivRef = useRef(null)
-  const mapRef    = useRef(null)
-  const [filterStatus,      setFilterStatus]      = useState('All')
-  const [filterCriticality, setFilterCriticality] = useState('All')
+function ClientMapPage({ clients = CLIENTS, darkMode = true, onClientClick, isActive = true }) {
+  const mapDivRef       = useRef(null)
+  const mapRef          = useRef(null)
+  const tileLayerRef    = useRef(null)
+  const markersGroupRef = useRef(null)
+  const firstLoadRef    = useRef(true)
+  const prevViewRef     = useRef(null)
+  const skipRestoreRef  = useRef(false)
+  const [filterStatus,       setFilterStatus]       = useState('All')
+  const [filterCriticality,  setFilterCriticality]  = useState(new Set())
+
+  const toggleCriticality = (level) => {
+    setFilterCriticality(prev => {
+      const next = new Set(prev)
+      next.has(level) ? next.delete(level) : next.add(level)
+      return next
+    })
+  }
 
   const mapped = useMemo(() => clients.filter(c => c.lat && c.lng), [clients])
 
   const visible = useMemo(() => mapped.filter(c => {
-    if (filterStatus      !== 'All' && c.status      !== filterStatus)      return false
-    if (filterCriticality !== 'All' && c.criticality !== filterCriticality) return false
+    if (filterStatus !== 'All' && c.status !== filterStatus) return false
+    if (filterCriticality.size > 0 && !filterCriticality.has(c.criticality)) return false
     return true
   }), [mapped, filterStatus, filterCriticality])
 
@@ -4477,43 +4980,154 @@ function ClientMapPage({ clients = CLIENTS, darkMode = true, onClientClick }) {
   const onClientClickRef = useRef(onClientClick)
   useEffect(() => { onClientClickRef.current = onClientClick }, [onClientClick])
 
+  // ── Effect 1: Karte einmalig anlegen ───────────────────────────────────────
   useEffect(() => {
     if (!mapDivRef.current) return
-    if (mapRef.current) { mapRef.current.remove(); mapRef.current = null }
 
-    const map = L.map(mapDivRef.current, { center: [51.1657, 10.4515], zoom: 6, zoomControl: true })
+    if (!document.getElementById('holysec-map-styles')) {
+      const s = document.createElement('style')
+      s.id = 'holysec-map-styles'
+      s.textContent = [
+        '@keyframes pinDrop{from{opacity:0;transform:translateY(-18px) scale(0.72)}70%{transform:translateY(4px) scale(1.06)}to{opacity:1;transform:none}}',
+        '@keyframes pinBob{0%{transform:translateY(0)}10%{transform:translateY(-5px)}20%{transform:translateY(0)}100%{transform:translateY(0)}}',
+        '.holysec-map-moving .leaflet-marker-icon svg{animation:none!important;filter:none!important;will-change:transform}',
+        '.holysec-map-moving .leaflet-marker-icon>div>div:first-child{transition:none!important}',
+      ].join('')
+      document.head.appendChild(s)
+    }
+
+    const map = L.map(mapDivRef.current, {
+      center: [51.1657, 10.4515], zoom: 6, zoomControl: true,
+      preferCanvas: true,
+    })
     mapRef.current = map
 
-    L.tileLayer(
+    tileLayerRef.current = L.tileLayer(
       darkMode
         ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
         : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-      { attribution: '&copy; CARTO', subdomains: 'abcd' }
+      { attribution: '&copy; CARTO', subdomains: 'abcd', maxZoom: 19, updateWhenIdle: true, updateWhenZooming: false, keepBuffer: 3 }
     ).addTo(map)
 
-    visible.forEach(c => {
+    // Animationen während Karten-Bewegung pausieren
+    const el = mapDivRef.current
+    map.on('movestart zoomstart', () => el?.classList.add('holysec-map-moving'))
+    map.on('moveend zoomend',     () => el?.classList.remove('holysec-map-moving'))
+
+    markersGroupRef.current = L.layerGroup().addTo(map)
+
+    map.on('popupopen', (e) => {
+      const btn = e.popup.getElement()?.querySelector('.map-detail-btn')
+      if (btn) {
+        btn.onclick = () => {
+          const id = btn.dataset.clientId
+          if (id && onClientClickRef.current) onClientClickRef.current(id)
+        }
+      }
+    })
+
+    map.on('popupclose', () => {
+      if (prevViewRef.current && !skipRestoreRef.current) {
+        const { center, zoom } = prevViewRef.current
+        prevViewRef.current = null
+        map.flyTo(center, zoom, { animate: true, duration: 0.7 })
+      }
+    })
+
+    return () => {
+      map.remove()
+      mapRef.current = null
+      tileLayerRef.current = null
+      markersGroupRef.current = null
+      firstLoadRef.current = true
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Effect 2: Nur Tile-URL bei Dark-Mode-Wechsel tauschen ──────────────────
+  useEffect(() => {
+    if (!tileLayerRef.current) return
+    tileLayerRef.current.setUrl(
+      darkMode
+        ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+        : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
+    )
+  }, [darkMode])
+
+  // ── Effect 3: Nur Marker austauschen (kein map.remove() mehr) ──────────────
+  useEffect(() => {
+    const group = markersGroupRef.current
+    if (!group) return
+
+    const animate = firstLoadRef.current
+    firstLoadRef.current = false
+    group.clearLayers()
+
+    visible.forEach((c, idx) => {
       const col       = CRITICALITY_COLOR[c.criticality] || CRITICALITY_COLOR.LOW
-      const pinH      = c.openFindings > 0 ? 36 : 28
-      const pinW      = Math.round(pinH * 0.72)
       const innerFill = darkMode ? '#0f172a' : '#ffffff'
+      const gid      = 'hspg' + c.id.replace(/[^a-z0-9]/gi, '')
+      const delay    = idx * 60
+      const bobDelay = (idx * 900) % 5000
+
+      const pinW = 26
+      const pinH = 34
+      const labelW = 120
+      const labelH = 22
 
       const icon = L.divIcon({
-        html: `<svg width="${pinW}" height="${pinH}" viewBox="0 0 20 28" xmlns="http://www.w3.org/2000/svg">
-          <path d="M10 0C4.477 0 0 4.477 0 10c0 7.5 10 18 10 18S20 17.5 20 10C20 4.477 15.523 0 10 0Z"
-            fill="${col.fill}" stroke="${col.stroke}" stroke-width="1.5"/>
-          <circle cx="10" cy="10" r="4" fill="${innerFill}" opacity="0.8"/>
-        </svg>`,
+        html: `
+          <div style="display:flex;flex-direction:column;align-items:center;width:${labelW}px;${animate ? `animation:pinDrop 0.45s cubic-bezier(0.34,1.56,0.64,1) ${delay}ms both` : ''}">
+            <div style="font-size:9px;font-family:monospace;font-weight:700;color:${col.fill};background:${darkMode ? 'rgba(6,9,18,0.92)' : 'rgba(255,255,255,0.95)'};padding:3px 9px;border-radius:20px;border:1px solid ${col.fill}40;white-space:nowrap;max-width:${labelW - 6}px;overflow:hidden;text-overflow:ellipsis;display:block;text-align:center;box-shadow:0 2px 12px rgba(0,0,0,0.5),0 0 0 1px ${col.fill}18;margin-bottom:5px;letter-spacing:0.35px">${c.name}</div>
+            <div style="position:relative;display:flex;align-items:center;justify-content:center;width:${pinW}px;height:${pinH}px">
+              <svg width="${pinW}" height="${pinH}" viewBox="0 0 26 34" xmlns="http://www.w3.org/2000/svg"
+                   style="animation:pinBob 5s ease-in-out -${bobDelay}ms infinite;filter:drop-shadow(0 5px 8px ${col.fill}55)">
+                <defs>
+                  <linearGradient id="${gid}" x1="0.25" y1="0" x2="0.85" y2="1">
+                    <stop offset="0%" stop-color="${col.fill}"/>
+                    <stop offset="100%" stop-color="${col.stroke}"/>
+                  </linearGradient>
+                </defs>
+                <ellipse cx="13" cy="33.4" rx="3.2" ry="0.85" fill="${col.fill}" opacity="0.2"/>
+                <path d="M13 1.5C7.2 1.5 2.5 6.2 2.5 12c0 4.1 2.35 7.85 5.85 11.15L13 32.5l4.65-9.35C21.15 19.85 23.5 16.1 23.5 12 23.5 6.2 18.8 1.5 13 1.5Z"
+                  fill="url(#${gid})" stroke="${col.stroke}aa" stroke-width="0.75"/>
+                <path d="M9 5.5C8.1 7 7.6 9 7.6 11" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.28"/>
+                <circle cx="13" cy="12" r="4.6" fill="${innerFill}" opacity="0.95"/>
+                <circle cx="13" cy="12" r="2.3" fill="${col.fill}" opacity="0.58"/>
+                <circle cx="11.4" cy="10.4" r="0.85" fill="white" opacity="0.42"/>
+              </svg>
+            </div>
+          </div>
+        `,
         className:   '',
-        iconSize:    [pinW, pinH],
-        iconAnchor:  [pinW / 2, pinH],
-        popupAnchor: [0, -pinH - 4],
+        iconSize:    [labelW, labelH + 5 + pinH],
+        iconAnchor:  [labelW / 2, labelH + 5 + pinH],
+        popupAnchor: [0, -(labelH + 5 + pinH) - 6],
       })
 
-      const marker = L.marker([c.lat, c.lng], { icon }).addTo(map)
+      const marker = L.marker([c.lat, c.lng], { icon })
 
-      const bg  = darkMode ? '#0f172a' : '#ffffff'
-      const bd  = darkMode ? '#1e293b' : '#e2e8f0'
-      const txt = darkMode ? '#f1f5f9' : '#1e293b'
+      marker.on('click', () => {
+        const map = mapRef.current
+        // Marker-Klick → kein automatisches Zurückzoomen beim Schließen des alten Popups
+        skipRestoreRef.current = true
+        setTimeout(() => { skipRestoreRef.current = false }, 100)
+
+        const alreadyZoomed = map.getZoom() >= 12 && map.getBounds().contains([c.lat, c.lng])
+        if (alreadyZoomed && prevViewRef.current) {
+          const { center, zoom } = prevViewRef.current
+          prevViewRef.current = null
+          map.flyTo(center, zoom, { animate: true, duration: 0.7 })
+        } else {
+          if (!prevViewRef.current) {
+            prevViewRef.current = { center: map.getCenter(), zoom: map.getZoom() }
+          }
+          map.flyTo([c.lat, c.lng], Math.max(map.getZoom(), 12), { animate: true, duration: 0.6 })
+        }
+      })
+
+      const bg     = darkMode ? '#0f172a' : '#ffffff'
+      const bd     = darkMode ? '#1e293b' : '#e2e8f0'
+      const txt    = darkMode ? '#f1f5f9' : '#1e293b'
       const btnBg  = darkMode ? '#1e293b' : '#f1f5f9'
       const btnTxt = darkMode ? '#06b6d4' : '#0e7490'
       const openLine = c.openFindings > 0
@@ -4538,21 +5152,17 @@ function ClientMapPage({ clients = CLIENTS, darkMode = true, onClientClick }) {
           >&#8594; Details anzeigen</button>
         </div>
       `, { className: 'holysec-popup' })
-    })
 
-    // Sobald ein Popup geöffnet wird, den Detail-Button mit dem React-Callback verdrahten
-    map.on('popupopen', (e) => {
-      const btn = e.popup.getElement()?.querySelector('.map-detail-btn')
-      if (btn) {
-        btn.onclick = () => {
-          const id = btn.dataset.clientId
-          if (id && onClientClickRef.current) onClientClickRef.current(id)
-        }
-      }
+      group.addLayer(marker)
     })
-
-    return () => { if (mapRef.current) { mapRef.current.remove(); mapRef.current = null } }
   }, [visible, darkMode])
+
+  // Leaflet über Größenänderung informieren wenn Karte wieder sichtbar wird
+  useEffect(() => {
+    if (isActive && mapRef.current) {
+      setTimeout(() => mapRef.current?.invalidateSize(), 50)
+    }
+  }, [isActive])
 
   const chipBase   = darkMode
     ? 'border-[#1e293b] text-slate-500 hover:text-slate-300 hover:border-slate-600'
@@ -4600,17 +5210,24 @@ function ClientMapPage({ clients = CLIENTS, darkMode = true, onClientClick }) {
 
         {/* Kritikalitäts-Filter / Legende */}
         <div className="ml-auto flex items-center gap-1">
-          <button onClick={() => setFilterCriticality('All')}
-            className={`px-2.5 py-1.5 rounded text-[10px] font-mono border transition-all ${filterCriticality === 'All' ? chipActive : chipBase}`}>
-            All
+          <span className={`text-[9px] font-mono uppercase tracking-widest mr-1 ${metaText}`}>Kritikalität:</span>
+          <button onClick={() => setFilterCriticality(new Set())}
+            className={`px-2.5 py-1.5 rounded text-[10px] font-mono border transition-all ${filterCriticality.size === 0 ? chipActive : chipBase}`}>
+            Alle
           </button>
-          {Object.entries(CRITICALITY_COLOR).map(([level, col]) => (
-            <button key={level} onClick={() => setFilterCriticality(level)}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-[10px] font-mono border transition-all ${filterCriticality === level ? chipActive : chipBase}`}>
-              <span className="w-2 h-2 rounded-full shrink-0" style={{ background: col.fill }} />
-              {level}
-            </button>
-          ))}
+          {Object.entries(CRITICALITY_COLOR).map(([level, col]) => {
+            const active = filterCriticality.has(level)
+            return (
+              <button key={level} onClick={() => toggleCriticality(level)}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-[10px] font-mono border transition-all ${
+                  active ? 'font-bold' : chipBase
+                }`}
+                style={active ? { borderColor: col.stroke, background: col.fill + '22', color: col.fill } : {}}>
+                <span className="w-2 h-2 rounded-full shrink-0" style={{ background: col.fill }} />
+                {level}
+              </button>
+            )
+          })}
         </div>
       </div>
 
@@ -4631,7 +5248,7 @@ function EngagementGroupsPage({ groups, onAdd, onDelete, onEdit, teamMembers, cu
   const openNew  = () => { setEditingGroup(null); setShowModal(true) }
 
   return (
-    <div className="p-6 space-y-5">
+    <div className="p-3 lg:p-6 space-y-5">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-sm font-mono font-bold text-slate-100 tracking-widest uppercase">Engagement Groups</h2>
@@ -4654,7 +5271,7 @@ function EngagementGroupsPage({ groups, onAdd, onDelete, onEdit, teamMembers, cu
           </div>
         </Panel>
       ) : (
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {groups.map(group => {
             const gc = GROUP_COLORS[group.color] || GROUP_COLORS.cyan
             const groupMembers = teamMembers.filter(m => group.memberIds.includes(m.id))
@@ -4758,25 +5375,30 @@ function AuditLogPage({ logs = [], teamMembers = [], onClear, tipsLang = 'de' })
   const [rangeFilter, setRangeFilter] = useState('7d')
   const [confirmClear, setConfirmClear] = useState(false)
 
-  const now = Date.now()
-  const rangeCutoff = { '24h': now - 86400000, '7d': now - 7*86400000, '30d': now - 30*86400000, 'all': 0 }
-  const cutoff = rangeCutoff[rangeFilter] ?? 0
+  const filtered = useMemo(() => {
+    const now = Date.now()
+    const cutoff = ({ '24h': now - 86400000, '7d': now - 7*86400000, '30d': now - 30*86400000, 'all': 0 })[rangeFilter] ?? 0
+    return [...logs].reverse().filter(l => {
+      const ts = new Date(l.timestamp).getTime()
+      if (ts < cutoff) return false
+      if (catFilter !== 'All' && l.category !== catFilter) return false
+      if (userFilter !== 'All' && l.userId !== userFilter) return false
+      const q = search.toLowerCase()
+      return !q || l.action.toLowerCase().includes(q) || l.details.toLowerCase().includes(q) || l.userName.toLowerCase().includes(q)
+    })
+  }, [logs, rangeFilter, catFilter, userFilter, search])
 
-  const filtered = [...logs].reverse().filter(l => {
-    const ts = new Date(l.timestamp).getTime()
-    if (ts < cutoff) return false
-    if (catFilter !== 'All' && l.category !== catFilter) return false
-    if (userFilter !== 'All' && l.userId !== userFilter) return false
-    const q = search.toLowerCase()
-    return !q || l.action.toLowerCase().includes(q) || l.details.toLowerCase().includes(q) || l.userName.toLowerCase().includes(q)
-  })
-
-  const today = new Date(); today.setHours(0,0,0,0)
-  const todayLogs   = logs.filter(l => new Date(l.timestamp) >= today)
-  const todayLogins = todayLogs.filter(l => l.action === 'LOGIN').length
-  const lastLog     = logs.length ? logs[logs.length - 1] : null
-  const userCounts  = logs.reduce((acc, l) => { acc[l.userName] = (acc[l.userName] || 0) + 1; return acc }, {})
-  const mostActive  = Object.entries(userCounts).sort((a,b) => b[1]-a[1])[0]
+  const { todayLogs, todayLogins, lastLog, mostActive } = useMemo(() => {
+    const today = new Date(); today.setHours(0,0,0,0)
+    const tl = logs.filter(l => new Date(l.timestamp) >= today)
+    const userCounts = logs.reduce((acc, l) => { acc[l.userName] = (acc[l.userName] || 0) + 1; return acc }, {})
+    return {
+      todayLogs: tl,
+      todayLogins: tl.filter(l => l.action === 'LOGIN').length,
+      lastLog: logs.length ? logs[logs.length - 1] : null,
+      mostActive: Object.entries(userCounts).sort((a,b) => b[1]-a[1])[0],
+    }
+  }, [logs])
 
   const fmtTs = (iso) => {
     const d = new Date(iso)
@@ -4792,9 +5414,9 @@ function AuditLogPage({ logs = [], teamMembers = [], onClear, tipsLang = 'de' })
   }
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="p-3 lg:p-6 space-y-4">
       {/* KPIs */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard label="Events gesamt" value={logs.length} sub="in der Datenbank" icon={ClipboardList} />
         <KpiCard label="Heute" value={todayLogs.length} sub="Events (24h)" icon={Activity} accent />
         <KpiCard label="Logins heute" value={todayLogins} sub="Auth-Events" icon={KeyRound} />
@@ -4802,51 +5424,55 @@ function AuditLogPage({ logs = [], teamMembers = [], onClear, tipsLang = 'de' })
       </div>
 
       {/* Filters */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <div className="relative">
-          <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Suchen..."
-            className="bg-[#0f172a] border border-[#1e293b] rounded px-3 py-1.5 pl-8 text-xs font-mono text-slate-200 placeholder-slate-600 focus:outline-none focus:border-cyan-500/50 w-44" />
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="relative flex-1 min-w-0 max-w-xs">
+            <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Suchen..."
+              className="w-full bg-[#0f172a] border border-[#1e293b] rounded px-3 py-1.5 pl-8 text-xs font-mono text-slate-200 placeholder-slate-600 focus:outline-none focus:border-cyan-500/50" />
+          </div>
+          <select value={userFilter} onChange={e => setUserFilter(e.target.value)}
+            className="bg-[#0f172a] border border-[#1e293b] rounded px-2 py-1.5 text-xs font-mono text-slate-400 focus:outline-none focus:border-cyan-500/50">
+            <option value="All">Alle User</option>
+            {teamMembers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+          </select>
+          <select value={rangeFilter} onChange={e => setRangeFilter(e.target.value)}
+            className="bg-[#0f172a] border border-[#1e293b] rounded px-2 py-1.5 text-xs font-mono text-slate-400 focus:outline-none focus:border-cyan-500/50">
+            <option value="24h">Letzte 24h</option>
+            <option value="7d">Letzte 7 Tage</option>
+            <option value="30d">Letzte 30 Tage</option>
+            <option value="all">Alle</option>
+          </select>
         </div>
-        <div className="flex gap-1 flex-wrap">
-          {['All', ...Object.keys(LOG_CAT)].map(c => (
-            <button key={c} onClick={() => setCatFilter(c)}
-              className={`px-2 py-1 rounded text-[10px] font-mono border transition-all ${catFilter === c ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-400' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
-              {c === 'All' ? 'Alle' : LOG_CAT[c].label}
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex gap-1 flex-wrap">
+            {['All', ...Object.keys(LOG_CAT)].map(c => (
+              <button key={c} onClick={() => setCatFilter(c)}
+                className={`px-2 py-1 rounded text-[10px] font-mono border transition-all ${catFilter === c ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-400' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
+                {c === 'All' ? 'Alle' : LOG_CAT[c].label}
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-2 shrink-0">
+            <button onClick={exportCSV}
+              className="flex items-center gap-1.5 px-3 py-1.5 border border-[#1e293b] rounded text-xs font-mono text-slate-500 hover:text-green-400 hover:border-green-500/40 transition-all">
+              <Download size={12} /> CSV Export
             </button>
-          ))}
-        </div>
-        <select value={userFilter} onChange={e => setUserFilter(e.target.value)}
-          className="bg-[#0f172a] border border-[#1e293b] rounded px-2 py-1.5 text-xs font-mono text-slate-400 focus:outline-none focus:border-cyan-500/50">
-          <option value="All">Alle User</option>
-          {teamMembers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-        </select>
-        <select value={rangeFilter} onChange={e => setRangeFilter(e.target.value)}
-          className="bg-[#0f172a] border border-[#1e293b] rounded px-2 py-1.5 text-xs font-mono text-slate-400 focus:outline-none focus:border-cyan-500/50">
-          <option value="24h">Letzte 24h</option>
-          <option value="7d">Letzte 7 Tage</option>
-          <option value="30d">Letzte 30 Tage</option>
-          <option value="all">Alle</option>
-        </select>
-        <div className="ml-auto flex gap-2">
-          <button onClick={exportCSV}
-            className="flex items-center gap-1.5 px-3 py-1.5 border border-[#1e293b] rounded text-xs font-mono text-slate-500 hover:text-green-400 hover:border-green-500/40 transition-all">
-            <Download size={12} /> CSV Export
-          </button>
-          {confirmClear ? (
-            <div className="flex items-center gap-1">
-              <span className="text-[10px] font-mono text-red-400">Sicher?</span>
-              <button onClick={() => { onClear(); setConfirmClear(false) }}
-                className="px-2 py-1 rounded border border-red-500/40 bg-red-500/10 text-[10px] font-mono text-red-400 hover:bg-red-500/20 transition-all">Ja</button>
-              <button onClick={() => setConfirmClear(false)}
-                className="px-2 py-1 rounded border border-[#1e293b] text-[10px] font-mono text-slate-500 hover:text-slate-300 transition-all">Nein</button>
-            </div>
-          ) : (
-            <button onClick={() => setConfirmClear(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 border border-[#1e293b] rounded text-xs font-mono text-slate-500 hover:text-red-400 hover:border-red-500/40 transition-all">
-              <Trash2 size={12} /> Logs löschen
-            </button>
-          )}
+            {confirmClear ? (
+              <div className="flex items-center gap-1">
+                <span className="text-[10px] font-mono text-red-400">Sicher?</span>
+                <button onClick={() => { onClear(); setConfirmClear(false) }}
+                  className="px-2 py-1 rounded border border-red-500/40 bg-red-500/10 text-[10px] font-mono text-red-400 hover:bg-red-500/20 transition-all">Ja</button>
+                <button onClick={() => setConfirmClear(false)}
+                  className="px-2 py-1 rounded border border-[#1e293b] text-[10px] font-mono text-slate-500 hover:text-slate-300 transition-all">Nein</button>
+              </div>
+            ) : (
+              <button onClick={() => setConfirmClear(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 border border-[#1e293b] rounded text-xs font-mono text-slate-500 hover:text-red-400 hover:border-red-500/40 transition-all">
+                <Trash2 size={12} /> Logs löschen
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -4933,7 +5559,9 @@ export default function App() {
   const [assignments, setAssignments] = useState(
     Object.fromEntries(ENGAGEMENTS.map(e => [e.id, e.assignedTo || []]))
   )
-  const [clients, setClients] = useState(CLIENTS)
+  const [clients, setClients] = useState(() => {
+    try { const s = localStorage.getItem('holysec_clients'); return s ? JSON.parse(s) : CLIENTS } catch { return CLIENTS }
+  })
   const [timeEntries, setTimeEntries] = useState(() => {
     try { return JSON.parse(localStorage.getItem('holysec_time_entries') || '[]') } catch { return [] }
   })
@@ -4942,6 +5570,7 @@ export default function App() {
   })
   const [page, setPage] = useState('dashboard')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [selectedClientId, setSelectedClientId] = useState(null)
   const [selectedEngId, setSelectedEngId] = useState(null)
   const [reports, setReports] = useState(REPORTS)
@@ -4978,6 +5607,7 @@ export default function App() {
   })
   const sessionIpRef = useRef('–')
   const currentUserRef = useRef(null)
+  const apiLoadedRef = useRef(false)
 
   useEffect(() => { currentUserRef.current = currentUser }, [currentUser])
 
@@ -4986,6 +5616,42 @@ export default function App() {
       .then(r => r.json()).then(d => { sessionIpRef.current = d.ip })
       .catch(() => { sessionIpRef.current = window.location.hostname || 'lokal' })
   }, [])
+
+  // Boot: load persistent state from backend, or push defaults on first run
+  useEffect(() => {
+    apiState().then(state => {
+      if (!state || Object.keys(state).length === 0) {
+        apiPut('holysec_clients', clients)
+        apiPut('holysec_team_members', teamMembers)
+        apiPut('holysec_time_entries', timeEntries)
+        apiPut('holysec_eng_groups', engagementGroups)
+        apiPut('holysec_engagements', customEngagements)
+        apiPut('holysec_findings', customFindings)
+        apiPut('holysec_deleted_findings', [...deletedFindingIds])
+        apiPut('holysec_finding_edits', findingEdits)
+        apiPut('holysec_users_auth', customUsersAuth)
+        apiPut('holysec_audit_logs', auditLogs)
+        apiPut('holysec_pending_reports', pendingReports)
+        apiPut('holysec_assignments', assignments)
+        apiPut('holysec_eng_status_overrides', engStatusOverrides)
+      } else {
+        if (state.holysec_clients)              setClients(state.holysec_clients)
+        if (state.holysec_team_members)         setTeamMembers(state.holysec_team_members)
+        if (state.holysec_time_entries)         setTimeEntries(state.holysec_time_entries)
+        if (state.holysec_eng_groups)           setEngagementGroups(state.holysec_eng_groups)
+        if (state.holysec_engagements)          setCustomEngagements(state.holysec_engagements)
+        if (state.holysec_findings)             setCustomFindings(state.holysec_findings)
+        if (state.holysec_deleted_findings)     setDeletedFindingIds(new Set(state.holysec_deleted_findings))
+        if (state.holysec_finding_edits)        setFindingEdits(state.holysec_finding_edits)
+        if (state.holysec_users_auth)           setCustomUsersAuth(state.holysec_users_auth)
+        if (state.holysec_audit_logs)           setAuditLogs(state.holysec_audit_logs)
+        if (state.holysec_pending_reports)      setPendingReports(state.holysec_pending_reports)
+        if (state.holysec_assignments)          setAssignments(state.holysec_assignments)
+        if (state.holysec_eng_status_overrides) setEngStatusOverrides(state.holysec_eng_status_overrides)
+      }
+      apiLoadedRef.current = true
+    }).catch(() => { apiLoadedRef.current = true })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Self-healing: restore members whose profile was stored in customUsersAuth
   // and clean up auth entries that have neither a matching member nor stored profile
@@ -5009,7 +5675,9 @@ export default function App() {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    localStorage.setItem('holysec_audit_logs', JSON.stringify(auditLogs.slice(-1000)))
+    const trimmed = auditLogs.slice(-1000)
+    localStorage.setItem('holysec_audit_logs', JSON.stringify(trimmed))
+    if (apiLoadedRef.current) apiPut('holysec_audit_logs', trimmed)
   }, [auditLogs])
 
   const logEvent = useCallback((action, details, category = 'general', userOverride = null) => {
@@ -5034,14 +5702,35 @@ export default function App() {
 
   useEffect(() => { localStorage.setItem('holysec_ui_lang', uiLang) }, [uiLang])
   useEffect(() => { localStorage.setItem('holysec_tips_lang', tipsLang) }, [tipsLang])
-  useEffect(() => { localStorage.setItem('holysec_pending_reports', JSON.stringify(pendingReports)) }, [pendingReports])
+
+  useEffect(() => {
+    localStorage.setItem('holysec_pending_reports', JSON.stringify(pendingReports))
+    if (apiLoadedRef.current) apiPut('holysec_pending_reports', pendingReports)
+  }, [pendingReports])
+
+  useEffect(() => {
+    localStorage.setItem('holysec_clients', JSON.stringify(clients))
+    if (apiLoadedRef.current) apiPut('holysec_clients', clients)
+  }, [clients])
+
+  useEffect(() => {
+    const today = new Date().toISOString().split('T')[0]
+    const allEngs = [...ENGAGEMENTS, ...customEngagements]
+    setClients(prev => prev.map(c => {
+      if (c.status !== 'Pending') return c
+      const started = allEngs.some(e => e.clientId === c.id && e.start <= today)
+      return started ? { ...c, status: 'Active' } : c
+    }))
+  }, [customEngagements])
 
   useEffect(() => {
     localStorage.setItem('holysec_time_entries', JSON.stringify(timeEntries))
+    if (apiLoadedRef.current) apiPut('holysec_time_entries', timeEntries)
   }, [timeEntries])
 
   useEffect(() => {
     localStorage.setItem('holysec_team_members', JSON.stringify(teamMembers))
+    if (apiLoadedRef.current) apiPut('holysec_team_members', teamMembers)
   }, [teamMembers])
 
   useEffect(() => {
@@ -5051,27 +5740,42 @@ export default function App() {
 
   useEffect(() => {
     localStorage.setItem('holysec_eng_groups', JSON.stringify(engagementGroups))
+    if (apiLoadedRef.current) apiPut('holysec_eng_groups', engagementGroups)
   }, [engagementGroups])
 
   useEffect(() => {
     localStorage.setItem('holysec_engagements', JSON.stringify(customEngagements))
+    if (apiLoadedRef.current) apiPut('holysec_engagements', customEngagements)
   }, [customEngagements])
 
   useEffect(() => {
     localStorage.setItem('holysec_findings', JSON.stringify(customFindings))
+    if (apiLoadedRef.current) apiPut('holysec_findings', customFindings)
   }, [customFindings])
 
   useEffect(() => {
-    localStorage.setItem('holysec_deleted_findings', JSON.stringify([...deletedFindingIds]))
+    const arr = [...deletedFindingIds]
+    localStorage.setItem('holysec_deleted_findings', JSON.stringify(arr))
+    if (apiLoadedRef.current) apiPut('holysec_deleted_findings', arr)
   }, [deletedFindingIds])
 
   useEffect(() => {
     localStorage.setItem('holysec_finding_edits', JSON.stringify(findingEdits))
+    if (apiLoadedRef.current) apiPut('holysec_finding_edits', findingEdits)
   }, [findingEdits])
 
   useEffect(() => {
     localStorage.setItem('holysec_users_auth', JSON.stringify(customUsersAuth))
+    if (apiLoadedRef.current) apiPut('holysec_users_auth', customUsersAuth)
   }, [customUsersAuth])
+
+  useEffect(() => {
+    if (apiLoadedRef.current) apiPut('holysec_assignments', assignments)
+  }, [assignments])
+
+  useEffect(() => {
+    if (apiLoadedRef.current) apiPut('holysec_eng_status_overrides', engStatusOverrides)
+  }, [engStatusOverrides])
 
   const handleAddGroup    = useCallback((g) => { setEngagementGroups(p => [...p, g]); logEvent('GRUPPE_ERSTELLT', g.name, 'groups') }, [logEvent])
   const handleEditGroup   = useCallback((g) => { setEngagementGroups(p => p.map(x => x.id === g.id ? g : x)); logEvent('GRUPPE_BEARBEITET', g.name, 'groups') }, [logEvent])
@@ -5108,25 +5812,33 @@ export default function App() {
   }, [teamMembers, customUsersAuth, logEvent])
 
   const handleLogout = useCallback(() => {
+    if (activeTimer) {
+      const end = Date.now()
+      const duration = Math.floor((end - activeTimer.start) / 1000)
+      setTimeEntries(prev => [...prev, {
+        id: `te${end}`,
+        userId: activeTimer.userId,
+        userName: activeTimer.userName,
+        date: new Date(activeTimer.start).toISOString().split('T')[0],
+        start: new Date(activeTimer.start).toTimeString().slice(0, 5),
+        end: new Date(end).toTimeString().slice(0, 5),
+        duration,
+      }])
+      setActiveTimer(null)
+      logEvent('ZEITERFASSUNG_STOP', `Dauer: ${formatDurationShort(duration)} (Logout)`, 'time')
+    }
     logEvent('LOGOUT', 'Abgemeldet', 'auth')
-    setActiveTimer(prev => {
-      if (prev) {
-        const end = Date.now()
-        setTimeEntries(entries => [...entries, {
-          id: `te${end}`,
-          userId: prev.userId,
-          userName: prev.userName,
-          date: new Date(prev.start).toISOString().split('T')[0],
-          start: new Date(prev.start).toTimeString().slice(0, 5),
-          end: new Date(end).toTimeString().slice(0, 5),
-          duration: Math.floor((end - prev.start) / 1000),
-        }])
-      }
-      return null
-    })
+    setToken(null)
     setCurrentUser(null)
     setPage('dashboard')
-  }, [logEvent])
+  }, [logEvent, activeTimer])
+
+  // 401-Handler: nach handleLogout definiert, damit keine ReferenceError entsteht
+  useEffect(() => {
+    const handler = () => handleLogout()
+    window.addEventListener('holysec:unauthorized', handler)
+    return () => window.removeEventListener('holysec:unauthorized', handler)
+  }, [handleLogout])
 
   const handleAddMember = useCallback((member) => {
     const { password, ...memberData } = member
@@ -5187,6 +5899,26 @@ export default function App() {
     logEvent('ENGAGEMENT_ERSTELLT', `"${eng.title}" [${eng.type}] — ${eng.status}`, 'engagements')
   }, [logEvent])
 
+  const handleEditEngagement = useCallback((eng) => {
+    const isCustom = customEngagements.some(e => e.id === eng.id)
+    if (isCustom) {
+      setCustomEngagements(prev => prev.map(e => e.id === eng.id ? { ...e, ...eng } : e))
+    } else {
+      setEngStatusOverrides(prev => ({ ...prev, [eng.id]: eng.status }))
+    }
+    logEvent('ENGAGEMENT_BEARBEITET', `"${eng.title}"`, 'engagements')
+  }, [customEngagements, logEvent])
+
+  const handleDeleteEngagement = useCallback((id) => {
+    const isCustom = customEngagements.some(e => e.id === id)
+    if (isCustom) {
+      setCustomEngagements(prev => prev.filter(e => e.id !== id))
+    } else {
+      setEngStatusOverrides(prev => { const n = { ...prev }; n[`_del_${id}`] = 'DELETED'; return n })
+    }
+    logEvent('ENGAGEMENT_GELÖSCHT', `ID: ${id}`, 'engagements')
+  }, [customEngagements, logEvent])
+
   const handleSetPendingReport = useCallback((engId, report) => {
     setPendingReports(prev => {
       if (report === null) {
@@ -5242,9 +5974,32 @@ export default function App() {
     }
   }, [customEngagements, engStatusOverrides, logEvent])
 
-  const handleAddClient    = useCallback((c) => { setClients(prev => [...prev, c]); logEvent('CLIENT_ERSTELLT', `"${c.name}" [${c.industry}]`, 'clients') }, [logEvent])
-  const handleEditClient   = useCallback((c) => { setClients(prev => prev.map(x => x.id === c.id ? c : x)); logEvent('CLIENT_BEARBEITET', `"${c.name}"`, 'clients') }, [logEvent])
-  const handleDeleteClient = useCallback((id) => { setClients(prev => prev.filter(x => x.id !== id)); logEvent('CLIENT_GELÖSCHT', `ID: ${id}`, 'clients') }, [logEvent])
+  const handleAddClient = useCallback((c) => {
+    setClients(prev => {
+      const next = [...prev, c]
+      localStorage.setItem('holysec_clients', JSON.stringify(next))
+      return next
+    })
+    logEvent('CLIENT_ERSTELLT', `"${c.name}" [${c.industry}]`, 'clients')
+  }, [logEvent])
+
+  const handleEditClient = useCallback((c) => {
+    setClients(prev => {
+      const next = prev.map(x => x.id === c.id ? c : x)
+      localStorage.setItem('holysec_clients', JSON.stringify(next))
+      return next
+    })
+    logEvent('CLIENT_BEARBEITET', `"${c.name}"`, 'clients')
+  }, [logEvent])
+
+  const handleDeleteClient = useCallback((id) => {
+    setClients(prev => {
+      const next = prev.filter(x => x.id !== id)
+      localStorage.setItem('holysec_clients', JSON.stringify(next))
+      return next
+    })
+    logEvent('CLIENT_GELÖSCHT', `ID: ${id}`, 'clients')
+  }, [logEvent])
 
   const handleClockIn = useCallback(() => {
     if (!currentUser || activeTimer) return
@@ -5271,7 +6026,11 @@ export default function App() {
   }, [activeTimer, logEvent])
 
   const handleAuditLogDownload = useCallback((what) => logEvent('PDF_EXPORT', what, 'download'), [logEvent])
-  const handleClearAuditLogs = useCallback(() => { setAuditLogs([]); localStorage.removeItem('holysec_audit_logs') }, [])
+  const handleClearAuditLogs = useCallback(() => {
+    setAuditLogs([])
+    localStorage.removeItem('holysec_audit_logs')
+    apiDelete('holysec_audit_logs')
+  }, [])
 
   const handleClientClick = useCallback((id) => { setSelectedClientId(id); setPage('client-detail') }, [])
   const handleBackToClients = useCallback(() => { setSelectedClientId(null); setPage('client-manager') }, [])
@@ -5279,7 +6038,9 @@ export default function App() {
   const handleBackToEngagements = useCallback(() => { setSelectedEngId(null); setPage('engagements') }, [])
 
   const allEngagements = useMemo(() => [
-    ...ENGAGEMENTS.map(e => engStatusOverrides[e.id] ? { ...e, status: engStatusOverrides[e.id] } : e),
+    ...ENGAGEMENTS
+      .filter(e => !engStatusOverrides[`_del_${e.id}`])
+      .map(e => engStatusOverrides[e.id] ? { ...e, status: engStatusOverrides[e.id] } : e),
     ...customEngagements,
   ], [customEngagements, engStatusOverrides])
   const allFindings = useMemo(() => [...FINDINGS, ...customFindings]
@@ -5299,9 +6060,10 @@ export default function App() {
         active={page} onNav={p => handleNav(p)}
         collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(v => !v)}
         currentUser={currentUser} onLogout={handleLogout} uiLang={uiLang}
+        mobileOpen={mobileMenuOpen} onMobileClose={() => setMobileMenuOpen(false)}
       />
 
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         <TopBar
           title={page === 'client-detail' ? 'CLIENT DETAIL' : page === 'eng-detail' ? 'ENGAGEMENT DETAIL' : titleInfo.title}
           subtitle={page === 'client-detail' ? selectedClientId : page === 'eng-detail' ? selectedEngId : titleInfo.subtitle}
@@ -5311,17 +6073,21 @@ export default function App() {
           userPresence={userPresence} onPresenceChange={setUserPresence}
           darkMode={darkMode} onToggleDark={() => setDarkMode(v => !v)}
           reminders={reminders}
+          onMobileMenuToggle={() => setMobileMenuOpen(v => !v)}
         />
 
-        <main className={`flex-1 ${page === 'map' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
+        <main className={`flex-1 relative ${page === 'map' ? 'overflow-hidden' : 'overflow-y-auto overflow-x-hidden'}`}>
           {page === 'dashboard'        && <Dashboard onClientClick={handleClientClick} clients={clients} currentUser={currentUser} assignments={assignments} findings={allFindings} engagements={allEngagements} onNav={handleNav} tipsLang={tipsLang} />}
           {page === 'client-radar'     && <ClientRadar onClientClick={handleClientClick} currentUser={currentUser} assignments={assignments} clients={clients} tipsLang={tipsLang} />}
           {page === 'client-manager'   && <ClientList clients={clients} onClientClick={handleClientClick} currentUser={currentUser} assignments={assignments} onAdd={handleAddClient} onEdit={handleEditClient} onDelete={handleDeleteClient} defaultStatus={pageOpts.status} tipsLang={tipsLang} />}
-          {page === 'map'              && <ClientMapPage clients={clients} darkMode={darkMode} onClientClick={handleClientClick} />}
+          {/* Karte immer gemountet — Leaflet + Tiles bleiben nach Login im Hintergrund geladen */}
+          <div style={page === 'map' ? { height: '100%' } : { position: 'absolute', inset: 0, opacity: 0, pointerEvents: 'none', zIndex: -1 }}>
+            <ClientMapPage clients={clients} darkMode={darkMode} onClientClick={handleClientClick} isActive={page === 'map'} />
+          </div>
           {page === 'client-detail'    && selectedClientId && <ClientDetail clientId={selectedClientId} onBack={handleBackToClients} clients={clients} tipsLang={tipsLang} onNav={handleNav} />}
           {page === 'findings'         && <FindingsTracker currentUser={currentUser} assignments={assignments} findings={allFindings} onAddFinding={handleAddFinding} onEditFinding={handleEditFinding} onDeleteFinding={handleDeleteFinding} clients={clients} teamMembers={teamMembers} engagements={allEngagements} onSendReminder={handleSendReminder} defaultSeverity={pageOpts.severity} defaultStatus={pageOpts.status} defaultClientId={pageOpts.clientId || 'All'} defaultFindingId={pageOpts.findingId || null} tipsLang={tipsLang} />}
-          {page === 'engagements'      && <EngagementPlanner teamMembers={teamMembers} assignments={assignments} onAssign={handleAssign} currentUser={currentUser} groups={engagementGroups} engagements={allEngagements} onAddEngagement={handleAddEngagement} onStatusChange={handleEngStatusChange} clients={clients} defaultStatus={pageOpts.status} defaultClientId={pageOpts.clientId || null} tipsLang={tipsLang} pendingReports={pendingReports} onEngDetail={handleEngDetailClick} />}
-          {page === 'eng-detail'       && selectedEngId && <EngagementDetail engagementId={selectedEngId} onBack={handleBackToEngagements} clients={clients} teamMembers={teamMembers} assignments={assignments} engagements={allEngagements} pendingReports={pendingReports} onSetPendingReport={handleSetPendingReport} />}
+          {page === 'engagements'      && <EngagementPlanner teamMembers={teamMembers} assignments={assignments} onAssign={handleAssign} currentUser={currentUser} groups={engagementGroups} engagements={allEngagements} onAddEngagement={handleAddEngagement} onStatusChange={handleEngStatusChange} onEdit={handleEditEngagement} onDelete={handleDeleteEngagement} clients={clients} defaultStatus={pageOpts.status} defaultClientId={pageOpts.clientId || null} tipsLang={tipsLang} pendingReports={pendingReports} onEngDetail={handleEngDetailClick} />}
+          {page === 'eng-detail'       && selectedEngId && <EngagementDetail engagementId={selectedEngId} onBack={handleBackToEngagements} clients={clients} teamMembers={teamMembers} assignments={assignments} engagements={allEngagements} pendingReports={pendingReports} onSetPendingReport={handleSetPendingReport} currentUser={currentUser} onEdit={handleEditEngagement} onDelete={handleDeleteEngagement} />}
           {page === 'eng-groups'       && <EngagementGroupsPage groups={engagementGroups} onAdd={handleAddGroup} onEdit={handleEditGroup} onDelete={handleDeleteGroup} teamMembers={teamMembers} currentUser={currentUser} />}
           {page === 'reports'          && <ReportingCenter reports={reports} onStatusChange={handleReportStatusChange} onAdd={handleAddReport} currentUser={currentUser} assignments={assignments} onAuditLog={handleAuditLogDownload} tipsLang={tipsLang} />}
           {page === 'team'             && <TeamPage members={teamMembers} currentUser={currentUser} onAdd={handleAddMember} onRemove={handleRemoveMember} assignments={assignments} engagements={allEngagements} userPresence={userPresence} timeEntries={timeEntries} onAuditLog={handleAuditLogDownload} />}

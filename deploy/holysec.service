@@ -1,0 +1,19 @@
+[Unit]
+Description=HolySec Ops
+After=network.target
+
+[Service]
+Type=simple
+User=holysec
+WorkingDirectory=/opt/holysec
+ExecStart=/usr/bin/node /opt/holysec/backend/server.js
+Restart=always
+RestartSec=5
+EnvironmentFile=/opt/holysec/backend/.env
+
+# Sicherheitshärtung
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

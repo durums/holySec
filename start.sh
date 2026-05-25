@@ -1,17 +1,11 @@
 #!/bin/bash
 cd "$(dirname "$0")"
 
-PORT=5173
-
 if ! command -v node &>/dev/null; then
   echo "[ERROR] Node.js nicht gefunden. Bitte installieren: https://nodejs.org"
   exit 1
 fi
 
-if [ ! -d "node_modules" ]; then
-  echo "[holySec] Abhängigkeiten nicht gefunden – führe Installer aus..."
-  ./install.sh || exit 1
-fi
 
 echo ""
 echo "  ██╗  ██╗ ██████╗ ██╗  ██╗   ██╗███████╗███████╗ ██████╗"
@@ -21,9 +15,15 @@ echo "  ██╔══██║██║   ██║██║    ╚██╔�
 echo "  ██║  ██║╚██████╔╝███████╗██║   ███████║███████╗╚██████╗"
 echo "  ╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚═╝   ╚══════╝╚══════╝ ╚═════╝"
 echo ""
-echo "  [holySec] Build starten..."
-echo ""
 
+# ── Frontend-Abhängigkeiten ────────────────────────────────────────────────────
+if [ ! -d "node_modules" ]; then
+  echo "  [holySec] Frontend-Abhängigkeiten installieren..."
+  npm install
+fi
+
+# ── Frontend bauen ────────────────────────────────────────────────────────────
+echo "  [holySec] Build starten..."
 npm run build
 
 if [ $? -ne 0 ]; then
@@ -31,14 +31,22 @@ if [ $? -ne 0 ]; then
   exit 1
 fi
 
-LOCAL_IP=$(ip -4 addr show scope global | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -1)
-[ -z "$LOCAL_IP" ] && LOCAL_IP=$(hostname -I | awk '{print $1}')
+# ── Backend-Abhängigkeiten ────────────────────────────────────────────────────
+if [ ! -d "backend/node_modules" ]; then
+  echo "  [holySec] Backend-Abhängigkeiten installieren..."
+  (cd backend && npm install)
+fi
 
+# ── Alten Prozess auf Port 5173 beenden (falls bereits läuft) ────────────────
+if fuser 5173/tcp &>/dev/null; then
+  echo "  [holySec] Port 5173 belegt — beende alten Prozess..."
+  fuser -k 5173/tcp &>/dev/null
+  sleep 1
+fi
+
+# ── Backend starten (serviert Frontend + API) ─────────────────────────────────
 echo ""
-echo "  ─────────────────────────────────────────────────"
-echo "  Lokal:    http://localhost:$PORT"
-echo "  Netzwerk: http://$LOCAL_IP:$PORT"
-echo "  ─────────────────────────────────────────────────"
+echo "  [holySec] Server startet..."
 echo ""
 
-npx vite preview
+PORT=5173 node backend/server.js
