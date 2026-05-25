@@ -9,8 +9,8 @@ if ! command -v node &>/dev/null; then
 fi
 
 if [ ! -d "node_modules" ]; then
-  echo "[holySec] Abhängigkeiten installieren..."
-  npm install
+  echo "[holySec] Abhängigkeiten nicht gefunden – führe Installer aus..."
+  ./install.sh || exit 1
 fi
 
 echo ""
