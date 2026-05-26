@@ -11,6 +11,8 @@ import {
 } from 'lucide-react'
 import * as L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import 'leaflet.markercluster'
+import 'leaflet.markercluster/dist/MarkerCluster.css'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, LineChart, Line, Legend
@@ -652,13 +654,12 @@ function LoginPage({ onLogin, darkMode, onToggleDark, usersAuth = USERS_AUTH }) 
       const memberId = await apiLogin(email, password)
       onLogin(memberId)
     } catch (err) {
-      if (err.message === 'Failed to fetch' || err.message.includes('NetworkError')) {
-        // Backend nicht erreichbar — lokaler Fallback
-        const auth = usersAuth.find(u => u.email === email && u.password === password)
-        if (!auth) { setError('Ungültige Zugangsdaten.'); setLoading(false); return }
+      // Bei jedem API-Fehler (Netzwerk, 5xx, Proxy) lokalen Fallback versuchen
+      const auth = usersAuth.find(u => u.email === email && u.password === password)
+      if (auth) {
         onLogin(auth.memberId)
       } else {
-        setError(err.message || 'Ungültige Zugangsdaten.')
+        setError('Ungültige Zugangsdaten.')
         setLoading(false)
       }
     }
@@ -4945,30 +4946,19 @@ const CRITICALITY_COLOR = {
   LOW:      { fill: '#22c55e', stroke: '#14532d' },
 }
 
-function ClientMapPage({ clients = CLIENTS, darkMode = true, onClientClick, isActive = true }) {
+function ClientMapPage({ clients = CLIENTS, darkMode = true, onClientClick }) {
   const mapDivRef       = useRef(null)
   const mapRef          = useRef(null)
-  const tileLayerRef    = useRef(null)
-  const markersGroupRef = useRef(null)
-  const firstLoadRef    = useRef(true)
-  const prevViewRef     = useRef(null)
-  const skipRestoreRef  = useRef(false)
-  const [filterStatus,       setFilterStatus]       = useState('All')
-  const [filterCriticality,  setFilterCriticality]  = useState(new Set())
-
-  const toggleCriticality = (level) => {
-    setFilterCriticality(prev => {
-      const next = new Set(prev)
-      next.has(level) ? next.delete(level) : next.add(level)
-      return next
-    })
-  }
+  const savedViewRef    = useRef(null)
+  const flybackTimerRef = useRef(null)
+  const [filterStatus,      setFilterStatus]      = useState('All')
+  const [filterCriticality, setFilterCriticality] = useState('All')
 
   const mapped = useMemo(() => clients.filter(c => c.lat && c.lng), [clients])
 
   const visible = useMemo(() => mapped.filter(c => {
-    if (filterStatus !== 'All' && c.status !== filterStatus) return false
-    if (filterCriticality.size > 0 && !filterCriticality.has(c.criticality)) return false
+    if (filterStatus      !== 'All' && c.status      !== filterStatus)      return false
+    if (filterCriticality !== 'All' && c.criticality !== filterCriticality) return false
     return true
   }), [mapped, filterStatus, filterCriticality])
 
@@ -4980,150 +4970,107 @@ function ClientMapPage({ clients = CLIENTS, darkMode = true, onClientClick, isAc
   const onClientClickRef = useRef(onClientClick)
   useEffect(() => { onClientClickRef.current = onClientClick }, [onClientClick])
 
-  // ── Effect 1: Karte einmalig anlegen ───────────────────────────────────────
   useEffect(() => {
     if (!mapDivRef.current) return
-
-    if (!document.getElementById('holysec-map-styles')) {
-      const s = document.createElement('style')
-      s.id = 'holysec-map-styles'
-      s.textContent = [
-        '@keyframes pinDrop{from{opacity:0;transform:translateY(-18px) scale(0.72)}70%{transform:translateY(4px) scale(1.06)}to{opacity:1;transform:none}}',
-        '@keyframes pinBob{0%{transform:translateY(0)}10%{transform:translateY(-5px)}20%{transform:translateY(0)}100%{transform:translateY(0)}}',
-        '.holysec-map-moving .leaflet-marker-icon svg{animation:none!important;filter:none!important;will-change:transform}',
-        '.holysec-map-moving .leaflet-marker-icon>div>div:first-child{transition:none!important}',
-      ].join('')
-      document.head.appendChild(s)
-    }
+    if (mapRef.current) { mapRef.current.remove(); mapRef.current = null }
 
     const map = L.map(mapDivRef.current, {
-      center: [51.1657, 10.4515], zoom: 6, zoomControl: true,
-      preferCanvas: true,
+      center: [51.1657, 10.4515],
+      zoom: 6,
+      zoomControl: true,
+      maxZoom: 14,
+      wheelPxPerZoomLevel: 120,
+      zoomSnap: 0.5,
+      zoomDelta: 0.5,
+      keepBuffer: 4,
+      boxZoom: false,
+      fadeAnimation: true,
+      zoomAnimation: true,
+      markerZoomAnimation: true,
+      inertia: true,
+      inertiaDeceleration: 3000,
+      inertiaMaxSpeed: 1500,
+      tap: false,
     })
     mapRef.current = map
 
-    tileLayerRef.current = L.tileLayer(
+    L.tileLayer(
       darkMode
         ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
         : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-      { attribution: '&copy; CARTO', subdomains: 'abcd', maxZoom: 19, updateWhenIdle: true, updateWhenZooming: false, keepBuffer: 3 }
+      {
+        attribution: '&copy; CARTO',
+        subdomains: 'abcd',
+        updateWhenZooming: false,
+        updateWhenIdle: false,
+        keepBuffer: 4,
+        crossOrigin: true,
+        errorTileUrl: 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=',
+      }
     ).addTo(map)
 
-    // Animationen während Karten-Bewegung pausieren
-    const el = mapDivRef.current
-    map.on('movestart zoomstart', () => el?.classList.add('holysec-map-moving'))
-    map.on('moveend zoomend',     () => el?.classList.remove('holysec-map-moving'))
-
-    markersGroupRef.current = L.layerGroup().addTo(map)
-
-    map.on('popupopen', (e) => {
-      const btn = e.popup.getElement()?.querySelector('.map-detail-btn')
-      if (btn) {
-        btn.onclick = () => {
-          const id = btn.dataset.clientId
-          if (id && onClientClickRef.current) onClientClickRef.current(id)
-        }
-      }
+    // ── Cluster-Group ────────────────────────────────────────
+    const clusterGroup = L.markerClusterGroup({
+      maxClusterRadius: 48,
+      spiderfyOnMaxZoom: true,
+      showCoverageOnHover: false,
+      zoomToBoundsOnClick: true,
+      iconCreateFunction: (cluster) => {
+        const count  = cluster.getChildCount()
+        const sz     = count >= 10 ? 46 : 38
+        const half   = sz / 2
+        const accent = darkMode ? '#06b6d4' : '#0e7490'
+        const bg     = darkMode ? '#0f172a' : '#ffffff'
+        const border = darkMode ? '#164e63' : '#bae6fd'
+        return L.divIcon({
+          html: `<div class="hs-cluster" style="
+            width:${sz}px;height:${sz}px;
+            background:${bg};
+            border:2px solid ${accent};
+            box-shadow:0 0 14px ${accent}55, 0 2px 8px rgba(0,0,0,0.5);
+            font-size:${count >= 10 ? 12 : 11}px;
+            color:${accent};
+          ">${count}</div>`,
+          className: '',
+          iconSize:   [sz, sz],
+          iconAnchor: [half, half],
+        })
+      },
     })
 
-    map.on('popupclose', () => {
-      if (prevViewRef.current && !skipRestoreRef.current) {
-        const { center, zoom } = prevViewRef.current
-        prevViewRef.current = null
-        map.flyTo(center, zoom, { animate: true, duration: 0.7 })
-      }
-    })
-
-    return () => {
-      map.remove()
-      mapRef.current = null
-      tileLayerRef.current = null
-      markersGroupRef.current = null
-      firstLoadRef.current = true
-    }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── Effect 2: Nur Tile-URL bei Dark-Mode-Wechsel tauschen ──────────────────
-  useEffect(() => {
-    if (!tileLayerRef.current) return
-    tileLayerRef.current.setUrl(
-      darkMode
-        ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-        : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
-    )
-  }, [darkMode])
-
-  // ── Effect 3: Nur Marker austauschen (kein map.remove() mehr) ──────────────
-  useEffect(() => {
-    const group = markersGroupRef.current
-    if (!group) return
-
-    const animate = firstLoadRef.current
-    firstLoadRef.current = false
-    group.clearLayers()
-
-    visible.forEach((c, idx) => {
-      const col       = CRITICALITY_COLOR[c.criticality] || CRITICALITY_COLOR.LOW
-      const innerFill = darkMode ? '#0f172a' : '#ffffff'
-      const gid      = 'hspg' + c.id.replace(/[^a-z0-9]/gi, '')
-      const delay    = idx * 60
-      const bobDelay = (idx * 900) % 5000
-
-      const pinW = 26
-      const pinH = 34
-      const labelW = 120
-      const labelH = 22
+    visible.forEach(c => {
+      const col     = CRITICALITY_COLOR[c.criticality] || CRITICALITY_COLOR.LOW
+      const sz      = 34
+      const half    = sz / 2
+      const dotSz   = Math.round(sz * 0.35)
+      const pulseCls = c.criticality === 'CRITICAL' ? 'hs-marker-pulse' : ''
+      const glowPx  = c.criticality === 'CRITICAL' ? 14 : c.criticality === 'HIGH' ? 8 : 5
 
       const icon = L.divIcon({
-        html: `
-          <div style="display:flex;flex-direction:column;align-items:center;width:${labelW}px;${animate ? `animation:pinDrop 0.45s cubic-bezier(0.34,1.56,0.64,1) ${delay}ms both` : ''}">
-            <div style="font-size:9px;font-family:monospace;font-weight:700;color:${col.fill};background:${darkMode ? 'rgba(6,9,18,0.92)' : 'rgba(255,255,255,0.95)'};padding:3px 9px;border-radius:20px;border:1px solid ${col.fill}40;white-space:nowrap;max-width:${labelW - 6}px;overflow:hidden;text-overflow:ellipsis;display:block;text-align:center;box-shadow:0 2px 12px rgba(0,0,0,0.5),0 0 0 1px ${col.fill}18;margin-bottom:5px;letter-spacing:0.35px">${c.name}</div>
-            <div style="position:relative;display:flex;align-items:center;justify-content:center;width:${pinW}px;height:${pinH}px">
-              <svg width="${pinW}" height="${pinH}" viewBox="0 0 26 34" xmlns="http://www.w3.org/2000/svg"
-                   style="animation:pinBob 5s ease-in-out -${bobDelay}ms infinite;filter:drop-shadow(0 5px 8px ${col.fill}55)">
-                <defs>
-                  <linearGradient id="${gid}" x1="0.25" y1="0" x2="0.85" y2="1">
-                    <stop offset="0%" stop-color="${col.fill}"/>
-                    <stop offset="100%" stop-color="${col.stroke}"/>
-                  </linearGradient>
-                </defs>
-                <ellipse cx="13" cy="33.4" rx="3.2" ry="0.85" fill="${col.fill}" opacity="0.2"/>
-                <path d="M13 1.5C7.2 1.5 2.5 6.2 2.5 12c0 4.1 2.35 7.85 5.85 11.15L13 32.5l4.65-9.35C21.15 19.85 23.5 16.1 23.5 12 23.5 6.2 18.8 1.5 13 1.5Z"
-                  fill="url(#${gid})" stroke="${col.stroke}aa" stroke-width="0.75"/>
-                <path d="M9 5.5C8.1 7 7.6 9 7.6 11" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.28"/>
-                <circle cx="13" cy="12" r="4.6" fill="${innerFill}" opacity="0.95"/>
-                <circle cx="13" cy="12" r="2.3" fill="${col.fill}" opacity="0.58"/>
-                <circle cx="11.4" cy="10.4" r="0.85" fill="white" opacity="0.42"/>
-              </svg>
-            </div>
-          </div>
-        `,
+        html: `<div class="${pulseCls}" style="
+          width:${sz}px;height:${sz}px;
+          border-radius:50%;
+          background:${col.fill}1a;
+          border:2px solid ${col.fill};
+          box-shadow:0 0 ${glowPx}px ${col.fill}66, 0 2px 8px rgba(0,0,0,0.6);
+          display:flex;align-items:center;justify-content:center;
+          cursor:pointer;
+          transition:transform .15s;
+        ">
+          <div style="
+            width:${dotSz}px;height:${dotSz}px;
+            border-radius:50%;
+            background:${col.fill};
+            box-shadow:0 0 6px ${col.fill}99;
+          "></div>
+        </div>`,
         className:   '',
-        iconSize:    [labelW, labelH + 5 + pinH],
-        iconAnchor:  [labelW / 2, labelH + 5 + pinH],
-        popupAnchor: [0, -(labelH + 5 + pinH) - 6],
+        iconSize:    [sz, sz],
+        iconAnchor:  [half, half],
+        popupAnchor: [0, -half - 6],
       })
 
       const marker = L.marker([c.lat, c.lng], { icon })
-
-      marker.on('click', () => {
-        const map = mapRef.current
-        // Marker-Klick → kein automatisches Zurückzoomen beim Schließen des alten Popups
-        skipRestoreRef.current = true
-        setTimeout(() => { skipRestoreRef.current = false }, 100)
-
-        const alreadyZoomed = map.getZoom() >= 12 && map.getBounds().contains([c.lat, c.lng])
-        if (alreadyZoomed && prevViewRef.current) {
-          const { center, zoom } = prevViewRef.current
-          prevViewRef.current = null
-          map.flyTo(center, zoom, { animate: true, duration: 0.7 })
-        } else {
-          if (!prevViewRef.current) {
-            prevViewRef.current = { center: map.getCenter(), zoom: map.getZoom() }
-          }
-          map.flyTo([c.lat, c.lng], Math.max(map.getZoom(), 12), { animate: true, duration: 0.6 })
-        }
-      })
 
       const bg     = darkMode ? '#0f172a' : '#ffffff'
       const bd     = darkMode ? '#1e293b' : '#e2e8f0'
@@ -5135,34 +5082,88 @@ function ClientMapPage({ clients = CLIENTS, darkMode = true, onClientClick, isAc
         : ''
 
       marker.bindPopup(`
-        <div style="background:${bg};border:1px solid ${bd};border-radius:8px;padding:12px;min-width:200px;font-family:monospace;box-shadow:0 8px 24px rgba(0,0,0,0.25)">
-          <div style="font-size:13px;font-weight:700;color:${txt};margin-bottom:3px">${c.name}</div>
+        <div style="background:${bg};border:1px solid ${bd};border-radius:10px;padding:14px;min-width:210px;font-family:monospace;box-shadow:0 8px 28px rgba(0,0,0,0.35)">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+            <div style="width:8px;height:8px;border-radius:50%;background:${col.fill};box-shadow:0 0 6px ${col.fill};flex-shrink:0"></div>
+            <div style="font-size:13px;font-weight:700;color:${txt}">${c.name}</div>
+          </div>
           <div style="font-size:10px;color:#64748b;margin-bottom:8px">${c.city ?? ''} · ${c.industry}</div>
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-            <span style="font-size:10px;padding:2px 7px;border-radius:4px;background:${col.fill}22;color:${col.fill};border:1px solid ${col.stroke}44;font-weight:700">${c.criticality}</span>
+            <span style="font-size:10px;padding:2px 8px;border-radius:4px;background:${col.fill}22;color:${col.fill};border:1px solid ${col.stroke}55;font-weight:700;letter-spacing:.05em">${c.criticality}</span>
             <span style="font-size:10px;color:#94a3b8">${c.status}</span>
           </div>
           ${openLine}
           <button
             class="map-detail-btn"
             data-client-id="${c.id}"
-            style="margin-top:10px;width:100%;padding:6px 0;background:${btnBg};border:1px solid ${bd};border-radius:6px;color:${btnTxt};font-size:10px;font-family:monospace;font-weight:700;letter-spacing:0.08em;cursor:pointer;text-transform:uppercase;transition:opacity .15s"
-            onmouseover="this.style.opacity='.75'"
+            style="margin-top:10px;width:100%;padding:7px 0;background:${btnBg};border:1px solid ${bd};border-radius:6px;color:${btnTxt};font-size:10px;font-family:monospace;font-weight:700;letter-spacing:0.08em;cursor:pointer;text-transform:uppercase;transition:opacity .15s"
+            onmouseover="this.style.opacity='.7'"
             onmouseout="this.style.opacity='1'"
           >&#8594; Details anzeigen</button>
         </div>
       `, { className: 'holysec-popup' })
 
-      group.addLayer(marker)
+      clusterGroup.addLayer(marker)
     })
-  }, [visible, darkMode])
 
-  // Leaflet über Größenänderung informieren wenn Karte wieder sichtbar wird
-  useEffect(() => {
-    if (isActive && mapRef.current) {
-      setTimeout(() => mapRef.current?.invalidateSize(), 50)
+    map.addLayer(clusterGroup)
+
+    map.on('popupopen', (e) => {
+      const btn = e.popup.getElement()?.querySelector('.map-detail-btn')
+      if (btn) {
+        btn.onclick = () => {
+          const id = btn.dataset.clientId
+          if (id && onClientClickRef.current) onClientClickRef.current(id)
+        }
+      }
+      // Läuft ein Rücksprung-Timer? → anderer Marker wurde angeklickt während
+      // ein Popup offen war. Timer canceln und Original-View behalten.
+      if (flybackTimerRef.current !== null) {
+        clearTimeout(flybackTimerRef.current)
+        flybackTimerRef.current = null
+      } else {
+        // Kein laufender Timer → frisches Öffnen, View jetzt sichern
+        savedViewRef.current = { center: map.getCenter(), zoom: map.getZoom() }
+      }
+      const latlng = e.popup.getLatLng()
+      if (latlng) {
+        const targetZoom = Math.min(map.getZoom() + 2, 10)
+        map.flyTo(latlng, targetZoom, { duration: 0.5 })
+      }
+    })
+
+    map.on('popupclose', () => {
+      if (!savedViewRef.current) return
+      const saved = { ...savedViewRef.current }
+      // Rücksprung verzögern: falls im selben Tick ein neues Popup öffnet
+      // (Marker-zu-Marker-Klick), cancelt popupopen den Timer
+      flybackTimerRef.current = setTimeout(() => {
+        flybackTimerRef.current = null
+        savedViewRef.current = null
+        if (mapRef.current) mapRef.current.flyTo(saved.center, saved.zoom, { duration: 0.5 })
+      }, 0)
+    })
+
+    map.on('click', () => map.closePopup())
+
+    // Wächter: entfernt Leaflet-BoxZoom-Overlay sofort aus dem DOM
+    const zoomBoxWatcher = new MutationObserver((mutations) => {
+      mutations.forEach(({ addedNodes }) => {
+        addedNodes.forEach(node => {
+          if (node.nodeType === 1 && node.classList?.contains('leaflet-zoom-box')) {
+            node.remove()
+          }
+        })
+      })
+    })
+    zoomBoxWatcher.observe(mapDivRef.current, { childList: true, subtree: true })
+
+    return () => {
+      if (flybackTimerRef.current) { clearTimeout(flybackTimerRef.current); flybackTimerRef.current = null }
+      zoomBoxWatcher.disconnect()
+      if (mapRef.current) { mapRef.current.remove(); mapRef.current = null }
     }
-  }, [isActive])
+  }, [visible, darkMode])
 
   const chipBase   = darkMode
     ? 'border-[#1e293b] text-slate-500 hover:text-slate-300 hover:border-slate-600'
@@ -5210,29 +5211,25 @@ function ClientMapPage({ clients = CLIENTS, darkMode = true, onClientClick, isAc
 
         {/* Kritikalitäts-Filter / Legende */}
         <div className="ml-auto flex items-center gap-1">
-          <span className={`text-[9px] font-mono uppercase tracking-widest mr-1 ${metaText}`}>Kritikalität:</span>
-          <button onClick={() => setFilterCriticality(new Set())}
-            className={`px-2.5 py-1.5 rounded text-[10px] font-mono border transition-all ${filterCriticality.size === 0 ? chipActive : chipBase}`}>
-            Alle
+          <button onClick={() => setFilterCriticality('All')}
+            className={`px-2.5 py-1.5 rounded text-[10px] font-mono border transition-all ${filterCriticality === 'All' ? chipActive : chipBase}`}>
+            All
           </button>
-          {Object.entries(CRITICALITY_COLOR).map(([level, col]) => {
-            const active = filterCriticality.has(level)
-            return (
-              <button key={level} onClick={() => toggleCriticality(level)}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-[10px] font-mono border transition-all ${
-                  active ? 'font-bold' : chipBase
-                }`}
-                style={active ? { borderColor: col.stroke, background: col.fill + '22', color: col.fill } : {}}>
-                <span className="w-2 h-2 rounded-full shrink-0" style={{ background: col.fill }} />
-                {level}
-              </button>
-            )
-          })}
+          {Object.entries(CRITICALITY_COLOR).map(([level, col]) => (
+            <button key={level} onClick={() => setFilterCriticality(level)}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-[10px] font-mono border transition-all ${filterCriticality === level ? chipActive : chipBase}`}>
+              <span className="w-2 h-2 rounded-full shrink-0" style={{ background: col.fill }} />
+              {level}
+            </button>
+          ))}
         </div>
       </div>
 
       {/* Karte */}
-      <div className={`flex-1 rounded-xl overflow-hidden border ${borderCls}`} style={{ minHeight: 400 }}>
+      <div
+        className={`flex-1 rounded-xl border ${borderCls}`}
+        style={{ minHeight: 400, background: darkMode ? '#0f172a' : '#e2e8f0', isolation: 'isolate' }}
+      >
         <div ref={mapDivRef} style={{ height: '100%', width: '100%' }} />
       </div>
     </div>
@@ -6082,7 +6079,7 @@ export default function App() {
           {page === 'client-manager'   && <ClientList clients={clients} onClientClick={handleClientClick} currentUser={currentUser} assignments={assignments} onAdd={handleAddClient} onEdit={handleEditClient} onDelete={handleDeleteClient} defaultStatus={pageOpts.status} tipsLang={tipsLang} />}
           {/* Karte immer gemountet — Leaflet + Tiles bleiben nach Login im Hintergrund geladen */}
           <div style={page === 'map' ? { height: '100%' } : { position: 'absolute', inset: 0, opacity: 0, pointerEvents: 'none', zIndex: -1 }}>
-            <ClientMapPage clients={clients} darkMode={darkMode} onClientClick={handleClientClick} isActive={page === 'map'} />
+            {page === 'map' && <ClientMapPage clients={clients} darkMode={darkMode} onClientClick={handleClientClick} />}
           </div>
           {page === 'client-detail'    && selectedClientId && <ClientDetail clientId={selectedClientId} onBack={handleBackToClients} clients={clients} tipsLang={tipsLang} onNav={handleNav} />}
           {page === 'findings'         && <FindingsTracker currentUser={currentUser} assignments={assignments} findings={allFindings} onAddFinding={handleAddFinding} onEditFinding={handleEditFinding} onDeleteFinding={handleDeleteFinding} clients={clients} teamMembers={teamMembers} engagements={allEngagements} onSendReminder={handleSendReminder} defaultSeverity={pageOpts.severity} defaultStatus={pageOpts.status} defaultClientId={pageOpts.clientId || 'All'} defaultFindingId={pageOpts.findingId || null} tipsLang={tipsLang} />}

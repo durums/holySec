@@ -22,31 +22,30 @@ if [ ! -d "node_modules" ]; then
   npm install
 fi
 
-# ── Frontend bauen ────────────────────────────────────────────────────────────
-echo "  [holySec] Build starten..."
-npm run build
-
-if [ $? -ne 0 ]; then
-  echo "[ERROR] Build fehlgeschlagen."
-  exit 1
-fi
-
 # ── Backend-Abhängigkeiten ────────────────────────────────────────────────────
 if [ ! -d "backend/node_modules" ]; then
   echo "  [holySec] Backend-Abhängigkeiten installieren..."
   (cd backend && npm install)
 fi
 
-# ── Alten Prozess auf Port 5173 beenden (falls bereits läuft) ────────────────
-if fuser 5173/tcp &>/dev/null; then
-  echo "  [holySec] Port 5173 belegt — beende alten Prozess..."
-  fuser -k 5173/tcp &>/dev/null
-  sleep 1
-fi
+# ── Alte Prozesse beenden ─────────────────────────────────────────────────────
+for PORT in 5173 3001; do
+  if fuser $PORT/tcp &>/dev/null; then
+    echo "  [holySec] Port $PORT belegt — beende alten Prozess..."
+    fuser -k $PORT/tcp &>/dev/null
+    sleep 0.5
+  fi
+done
 
-# ── Backend starten (serviert Frontend + API) ─────────────────────────────────
+# ── Backend auf Port 3001 starten (API) ──────────────────────────────────────
 echo ""
-echo "  [holySec] Server startet..."
+echo "  [holySec] Backend startet auf Port 3001..."
+PORT=3001 node backend/server.js &
+BACKEND_PID=$!
+
+# ── Vite Dev-Server starten (Frontend + HMR) ─────────────────────────────────
+echo "  [holySec] Dev-Server startet auf http://localhost:5173/holySec/"
 echo ""
 
-PORT=5173 node backend/server.js
+trap "kill $BACKEND_PID 2>/dev/null" EXIT
+npm run dev
