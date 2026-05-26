@@ -22,7 +22,7 @@ import {
   MONTHLY_ENGAGEMENTS, CVSS_DISTRIBUTION, SEVERITY_DIST,
   TEAM_MEMBERS as INITIAL_TEAM, USERS_AUTH
 } from './data.js'
-import { apiPut, apiState, apiDelete, apiLogin, setToken } from './api.js'
+import { apiPut, apiState, apiDelete, apiLogin, apiLogout } from './api.js'
 
 // ─── CONSTANTS ───────────────────────────────────────────────────────────────
 
@@ -45,10 +45,17 @@ const NAV_GROUPS = [
       { id: 'reports',     label: 'Reports',     icon: FileText },
     ],
   },
-  { id: 'team',     label: 'Team',          icon: Users2,       standalone: true },
-  { id: 'audit',    label: 'Audit Log',     icon: ClipboardList, standalone: true, roles: ['Admin'] },
+  { id: 'team',     label: 'Team',          icon: Users2,       standalone: true, roles: ['Senior Pentester', 'Pentester', 'Junior Pentester'] },
+  {
+    id: 'intern', label: 'Intern', icon: Shield, roles: ['Admin'],
+    items: [
+      { id: 'team',            label: 'Team',             icon: Users2        },
+      { id: 'user-management', label: 'Nutzerverwaltung', icon: UserPlus      },
+      { id: 'time-tracking',   label: 'Zeiterfassung',    icon: Timer         },
+      { id: 'audit',           label: 'Aktivitätslog',    icon: ClipboardList },
+    ],
+  },
   { id: 'about',    label: 'About HolySec', icon: Crown,        standalone: true },
-  { id: 'settings', label: 'Settings',      icon: Settings,     standalone: true },
 ]
 
 const GROUP_COLORS = {
@@ -94,13 +101,15 @@ const NAV_LABELS = {
     dashboard: 'Dashboard', clients: 'Clients', 'client-radar': 'Client Radar',
     'client-manager': 'Client Manager', map: 'Client Map', assessments: 'Assessments',
     findings: 'Findings', engagements: 'Engagements', 'eng-groups': 'Eng. Groups',
-    reports: 'Reports', team: 'Team', audit: 'Audit Log', about: 'About HolySec', settings: 'Settings',
+    reports: 'Reports', team: 'Team', intern: 'Internal', 'user-management': 'User Management',
+    'time-tracking': 'Time Tracking', audit: 'Audit Log', about: 'About HolySec',
   },
   de: {
     dashboard: 'Dashboard', clients: 'Clients', 'client-radar': 'Client-Radar',
     'client-manager': 'Client-Verwaltung', map: 'Client-Karte', assessments: 'Tests',
     findings: 'Schwachstellen', engagements: 'Projekte', 'eng-groups': 'Gruppen',
-    reports: 'Berichte', team: 'Team', audit: 'Aktivitätslog', about: 'Über HolySec', settings: 'Einstellungen',
+    reports: 'Berichte', team: 'Team', intern: 'Intern', 'user-management': 'Nutzerverwaltung',
+    'time-tracking': 'Zeiterfassung', audit: 'Aktivitätslog', about: 'Über HolySec',
   },
 }
 
@@ -175,6 +184,14 @@ function formatDurationShort(secs) {
 function daysUntil(dateStr) {
   const diff = Math.ceil((new Date(dateStr) - new Date()) / 86400000)
   return diff
+}
+
+function fmtDate(dateStr, lang) {
+  if (!dateStr) return '—'
+  if (lang !== 'de') return dateStr
+  const [y, m, d] = dateStr.split('-')
+  if (!y || !m || !d) return dateStr
+  return `${d}.${m}.${y}`
 }
 
 function getMyScope(currentUser, assignments, allClients = CLIENTS, allEngagements = ENGAGEMENTS, allFindings = FINDINGS) {
@@ -654,14 +671,8 @@ function LoginPage({ onLogin, darkMode, onToggleDark, usersAuth = USERS_AUTH }) 
       const memberId = await apiLogin(email, password)
       onLogin(memberId)
     } catch (err) {
-      // Bei jedem API-Fehler (Netzwerk, 5xx, Proxy) lokalen Fallback versuchen
-      const auth = usersAuth.find(u => u.email === email && u.password === password)
-      if (auth) {
-        onLogin(auth.memberId)
-      } else {
-        setError('Ungültige Zugangsdaten.')
-        setLoading(false)
-      }
+      setError(err.message || 'Login fehlgeschlagen.')
+      setLoading(false)
     }
   }
 
@@ -784,11 +795,11 @@ function LoginPage({ onLogin, darkMode, onToggleDark, usersAuth = USERS_AUTH }) 
 
 // ─── SIDEBAR ─────────────────────────────────────────────────────────────────
 
-function Sidebar({ active, onNav, collapsed, onToggle, currentUser, onLogout, uiLang = 'en', mobileOpen = false, onMobileClose }) {
+function Sidebar({ active, onNav, collapsed, onToggle, currentUser, onLogout, uiLang = 'en', mobileOpen = false, onMobileClose, onSettingsOpen }) {
   const activeGroup = NAV_GROUPS.find(g => !g.standalone && g.items?.some(i => i.id === active))
 
   const [openGroups, setOpenGroups] = useState(() => {
-    const initial = new Set()
+    const initial = new Set(['clients', 'assessments'])
     if (activeGroup) initial.add(activeGroup.id)
     return initial
   })
@@ -897,20 +908,33 @@ function Sidebar({ active, onNav, collapsed, onToggle, currentUser, onLogout, ui
 
       <div className="px-3 py-3 border-t border-[#1e293b]">
         {collapsed ? (
-          <button onClick={onLogout} title="Logout"
-            className="w-full flex justify-center p-2 rounded text-slate-700 hover:text-red-400 hover:bg-red-400/10 transition-all">
-            <LogOut size={14} />
-          </button>
-        ) : currentUser ? (
-          <div className="flex items-center gap-2.5">
-            <MemberAvatar member={currentUser} size="md" />
-            <div className="flex-1 min-w-0">
-              <div className="text-xs font-mono text-slate-300 truncate">{currentUser.name}</div>
-              <div className="text-[10px] font-mono text-slate-600">{currentUser.role}</div>
-            </div>
+          <div className="flex flex-col items-center gap-1">
+            <button onClick={onSettingsOpen} title="Einstellungen"
+              className="w-full flex justify-center p-2 rounded text-slate-600 hover:text-cyan-400 hover:bg-cyan-500/10 transition-all">
+              <Settings size={14} />
+            </button>
             <button onClick={onLogout} title="Logout"
-              className="p-1.5 rounded text-slate-700 hover:text-red-400 hover:bg-red-400/10 transition-all shrink-0">
-              <LogOut size={13} />
+              className="w-full flex justify-center p-2 rounded text-slate-700 hover:text-red-400 hover:bg-red-400/10 transition-all">
+              <LogOut size={14} />
+            </button>
+          </div>
+        ) : currentUser ? (
+          <div className="space-y-1">
+            <button
+              onClick={onSettingsOpen}
+              className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded hover:bg-slate-800/50 transition-all group"
+              title="Einstellungen öffnen"
+            >
+              <MemberAvatar member={currentUser} size="md" />
+              <div className="flex-1 min-w-0 text-left">
+                <div className="text-xs font-mono text-slate-300 truncate group-hover:text-slate-100 transition-colors">{currentUser.name}</div>
+                <div className="text-[10px] font-mono text-slate-600">{currentUser.role}</div>
+              </div>
+              <Settings size={12} className="shrink-0 text-slate-700 group-hover:text-cyan-400 transition-colors" />
+            </button>
+            <button onClick={onLogout}
+              className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-slate-700 hover:text-red-400 hover:bg-red-400/10 transition-all text-[10px] font-mono">
+              <LogOut size={11} /> Abmelden
             </button>
           </div>
         ) : null}
@@ -1137,7 +1161,7 @@ function Dashboard({ onClientClick, clients: allClients = CLIENTS, currentUser, 
     <div className="p-3 lg:p-6 space-y-4 lg:space-y-6">
       {/* KPI row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
-        <KpiCard label="Active Clients" value={activeClients} sub={`${scopedClients.length} total`} icon={Users} accent info={TIPS[tipsLang].activeClients} onClick={() => onNav?.('client-manager', { status: 'Active' })} />
+        <KpiCard label="Active Clients" value={activeClients} sub={`${scopedClients.length} total`} icon={Users} accent info={TIPS[tipsLang].activeClients} onClick={() => onNav?.('client-radar')} />
         <KpiCard label="Open Criticals" value={openCriticals} sub="Require immediate action" icon={AlertTriangle} danger info={TIPS[tipsLang].openCriticals} onClick={() => onNav?.('findings', { severity: 'CRITICAL', status: 'Open' })} />
         <KpiCard label="Open Findings" value={totalOpen} sub={`${allFindingsProp.length} total tracked`} icon={ShieldAlert} info={TIPS[tipsLang].openFindings} onClick={() => onNav?.('findings', { status: 'Open' })} />
         <KpiCard label="Planned Tests" value={plannedEngagements} sub="This quarter" icon={Calendar} info={TIPS[tipsLang].plannedTests} onClick={() => onNav?.('engagements', { status: 'Planned' })} />
@@ -1224,50 +1248,6 @@ function Dashboard({ onClientClick, clients: allClients = CLIENTS, currentUser, 
         </Panel>
       </div>
 
-      {/* Client tiles */}
-      <Panel>
-        <PanelHeader title="Client Overview" subtitle={`${scopedClients.length} clients total`} info={TIPS[tipsLang].clientOverview} />
-        <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {scopedClients.map(client => {
-            const ScopeIcon = SCOPE_ICONS[client.scopeType] || Globe
-            const days = daysUntil(client.nextTest)
-            return (
-              <button
-                key={client.id}
-                onClick={() => onClientClick(client.id)}
-                className="text-left p-4 bg-[#0a0a0a] border border-[#1e293b] rounded-lg hover:border-cyan-500/40 hover:bg-cyan-500/3 transition-all duration-200 group"
-              >
-                <div className="flex items-start justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <ScopeIcon size={13} className="text-slate-500 group-hover:text-cyan-400 transition-colors" />
-                    <span className="text-[10px] font-mono text-slate-600">{client.scopeType}</span>
-                  </div>
-                  <StatusBadge status={client.status} />
-                </div>
-                <h3 className="text-sm font-mono font-semibold text-slate-100 mb-0.5 truncate group-hover:text-cyan-300 transition-colors">{client.name}</h3>
-                <p className="text-[10px] font-mono text-slate-600 mb-3">{client.industry}</p>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <SeverityBadge severity={client.criticality} />
-                  </div>
-                  <div className="text-right">
-                    <div className="text-[10px] font-mono text-slate-600">Next test</div>
-                    <div className={`text-xs font-mono font-bold ${days <= 14 ? 'text-red-400' : days <= 30 ? 'text-yellow-400' : 'text-slate-400'}`}>
-                      {days <= 0 ? 'TODAY' : `${days}d`}
-                    </div>
-                  </div>
-                </div>
-                {client.openFindings > 0 && (
-                  <div className="mt-2 flex items-center gap-1">
-                    <AlertTriangle size={10} className="text-red-400" />
-                    <span className="text-[10px] font-mono text-red-400">{client.openFindings} open findings</span>
-                  </div>
-                )}
-              </button>
-            )
-          })}
-        </div>
-      </Panel>
     </div>
   )
 }
@@ -1616,7 +1596,7 @@ function ClientList({ clients: allClients = CLIENTS, onClientClick, currentUser,
 
 // ─── CLIENT DETAIL ────────────────────────────────────────────────────────────
 
-function ClientDetail({ clientId, onBack, clients: allClients = CLIENTS, tipsLang = 'de', onNav }) {
+function ClientDetail({ clientId, onBack, clients: allClients = CLIENTS, tipsLang = 'de', uiLang = 'en', onNav }) {
   const [tab, setTab] = useState('overview')
   const client = allClients.find(c => c.id === clientId)
   if (!client) return null
@@ -1700,8 +1680,8 @@ function ClientDetail({ clientId, onBack, clients: allClients = CLIENTS, tipsLan
                   <InfoTooltip text="Vertragslaufzeit und Stundenbudget. Das Budget zeigt gebuchte vs. verbrauchte Stunden — Überschreitungen müssen separat abgerechnet werden." />
                 </div>
                 <div className="space-y-2 text-xs font-mono">
-                  <div className="flex justify-between"><span className="text-slate-600">Start</span><span className="text-slate-300">{client.contract.start}</span></div>
-                  <div className="flex justify-between"><span className="text-slate-600">Ende</span><span className={daysLeft <= 30 ? 'text-red-400' : 'text-slate-300'}>{client.contract.end}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-600">Start</span><span className="text-slate-300">{fmtDate(client.contract.start, uiLang)}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-600">Ende</span><span className={daysLeft <= 30 ? 'text-red-400' : 'text-slate-300'}>{fmtDate(client.contract.end, uiLang)}</span></div>
                   <div className="flex justify-between"><span className="text-slate-600">Stunden</span><span className="text-slate-300">{client.contract.used}h / {client.contract.hours}h</span></div>
                   <div className="flex justify-between"><span className="text-slate-600">Verbleibend</span><span className={remainHours < 20 ? 'text-red-400 font-semibold' : 'text-cyan-400'}>{remainHours}h</span></div>
                   <div className="mt-2">
@@ -1816,7 +1796,7 @@ function ClientDetail({ clientId, onBack, clients: allClients = CLIENTS, tipsLan
               <div className="flex items-start justify-between mb-2">
                 <div>
                   <h3 className="text-sm font-mono font-semibold text-slate-100">{eng.title}</h3>
-                  <p className="text-xs font-mono text-slate-500">{eng.start} → {eng.end}</p>
+                  <p className="text-xs font-mono text-slate-500">{fmtDate(eng.start, uiLang)} → {fmtDate(eng.end, uiLang)}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <StatusBadge status={eng.status} />
@@ -2428,6 +2408,45 @@ const PHASE_COLORS = {
   Reporting:   { bg: 'bg-green-500', text: 'text-green-300', border: 'border-green-500/30' },
 }
 
+const PHASE_TASKS = {
+  Recon: [
+    'Passive DNS-Aufklärung',
+    'WHOIS / RDAP-Abfrage',
+    'Subdomains identifiziert',
+    'E-Mail-Adressen gesammelt (OSINT)',
+    'Shodan / Censys / ZoomEye',
+    'Technologie-Stack ermittelt',
+    'Social Media / LinkedIn Recherche',
+  ],
+  Scanning: [
+    'Port-Scan durchgeführt (Nmap)',
+    'Service-Versionen erfasst',
+    'OS-Fingerprinting',
+    'Web-App erkundet (Dirbusting)',
+    'SSL/TLS-Konfiguration geprüft',
+    'Schwachstellen-Scan (OpenVAS / Nessus)',
+    'Manuelle Verifikation der Ergebnisse',
+  ],
+  Exploitation: [
+    'CVE-Recherche durchgeführt',
+    'Exploit vorbereitet / getestet',
+    'Schwachstelle erfolgreich ausgenutzt',
+    'Post-Exploitation durchgeführt',
+    'Privilege Escalation versucht',
+    'Lateral Movement geprüft',
+    'Proof-of-Concept dokumentiert',
+  ],
+  Reporting: [
+    'Executive Summary verfasst',
+    'Technische Befunde dokumentiert',
+    'CVSS-Bewertungen vergeben',
+    'Empfehlungen formuliert',
+    'Screenshots / Nachweise gesammelt',
+    'Internes Review abgeschlossen',
+    'Report an Kunden übergeben',
+  ],
+}
+
 const TYPE_COLORS = {
   'Full Red Team': 'border-l-red-500 bg-red-500/5',
   'Network':       'border-l-blue-500 bg-blue-500/5',
@@ -2557,12 +2576,108 @@ function NewEngagementModal({ clients = CLIENTS, currentUser, onSave, onClose, e
   )
 }
 
-function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, currentUser, groups = [], engagements: allEngProp = ENGAGEMENTS, onAddEngagement, onStatusChange, onEdit, onDelete, clients: allClientsProp = CLIENTS, defaultStatus = 'All', defaultClientId = null, tipsLang = 'de', pendingReports = {}, onEngDetail }) {
+function PhaseDetailModal({ engagement, phase, onSave, onClose, canEdit }) {
+  const tasks = PHASE_TASKS[phase] || []
+  const savedChecks = engagement.phaseChecks?.[phase] || []
+  const [checked, setChecked] = useState(() => new Set(savedChecks))
+  const [notes, setNotes] = useState(engagement.phaseNotes?.[phase] || '')
+  const cfg = PHASE_COLORS[phase]
+  const doneCount = checked.size
+  const totalCount = tasks.length
+  const pct = totalCount ? Math.round((doneCount / totalCount) * 100) : 0
+
+  const toggleTask = idx => {
+    if (!canEdit) return
+    setChecked(prev => {
+      const next = new Set(prev)
+      next.has(idx) ? next.delete(idx) : next.add(idx)
+      return next
+    })
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4">
+      <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl w-full max-w-lg shadow-2xl flex flex-col max-h-[90vh]">
+
+        {/* Header */}
+        <div className="flex items-start justify-between gap-3 p-5 pb-4 border-b border-[#1e293b]">
+          <div>
+            <p className="text-[10px] font-mono text-slate-500 uppercase tracking-widest mb-1">{engagement.title}</p>
+            <h3 className={`text-base font-mono font-bold ${cfg.text}`}>{phase}</h3>
+          </div>
+          <button onClick={onClose} className="text-slate-600 hover:text-slate-300 transition-colors mt-0.5 shrink-0"><X size={15} /></button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          {/* Progress */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between text-[10px] font-mono">
+              <span className="text-slate-500">Fortschritt</span>
+              <span className={pct === 100 ? cfg.text : 'text-slate-400'}>{doneCount} / {totalCount} ({pct}%)</span>
+            </div>
+            <div className="h-1.5 rounded-full bg-slate-800">
+              <div className={`h-1.5 rounded-full transition-all ${cfg.bg}`} style={{ width: `${pct}%` }} />
+            </div>
+          </div>
+
+          {/* Checkliste */}
+          <div className="space-y-1">
+            <p className="text-[9px] font-mono text-slate-600 uppercase tracking-widest mb-2">Checkliste</p>
+            {tasks.map((task, idx) => (
+              <button
+                key={idx}
+                onClick={() => toggleTask(idx)}
+                disabled={!canEdit}
+                className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg border text-left transition-all ${
+                  checked.has(idx)
+                    ? `${cfg.border} bg-slate-800/60`
+                    : 'border-transparent hover:border-[#1e293b] hover:bg-slate-800/30'
+                } ${canEdit ? 'cursor-pointer' : 'cursor-default'}`}
+              >
+                <div className={`shrink-0 w-4 h-4 rounded border flex items-center justify-center transition-all ${
+                  checked.has(idx) ? `${cfg.bg} border-transparent` : 'border-slate-600 bg-transparent'
+                }`}>
+                  {checked.has(idx) && <svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                </div>
+                <span className={`text-xs font-mono ${checked.has(idx) ? 'text-slate-500 line-through' : 'text-slate-300'}`}>{task}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* Notizen */}
+          <div className="space-y-1.5">
+            <p className="text-[9px] font-mono text-slate-600 uppercase tracking-widest">Notizen</p>
+            <textarea
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              readOnly={!canEdit}
+              placeholder={canEdit ? 'Tools, Ergebnisse, Besonderheiten...' : 'Keine Notizen vorhanden.'}
+              rows={4}
+              className="w-full bg-[#080e1a] border border-[#1e293b] rounded-lg p-3 text-xs font-mono text-slate-300 placeholder-slate-700 resize-none focus:outline-none focus:border-cyan-500/40 transition-colors"
+            />
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex justify-end gap-2 p-4 pt-3 border-t border-[#1e293b]">
+          <button onClick={onClose} className="px-4 py-2 rounded border border-[#1e293b] text-xs font-mono text-slate-400 hover:text-slate-200 transition-all">Schließen</button>
+          {canEdit && (
+            <button onClick={() => onSave({ notes, checks: [...checked] })} className="px-4 py-2 rounded bg-cyan-500/10 border border-cyan-500/40 text-xs font-mono text-cyan-400 hover:bg-cyan-500/20 transition-all">
+              Speichern
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, currentUser, groups = [], engagements: allEngProp = ENGAGEMENTS, onAddEngagement, onStatusChange, onEdit, onDelete, clients: allClientsProp = CLIENTS, defaultStatus = 'All', defaultClientId = null, tipsLang = 'de', uiLang = 'en', pendingReports = {}, onEngDetail }) {
   const ENG_STATUS_CYCLE = { Planned: 'Active', Active: 'On Hold', 'On Hold': 'Completed', Completed: 'Planned' }
   const canCycleStatus = currentUser?.role === 'Admin' || currentUser?.role === 'Senior Pentester'
   const isAdmin = currentUser?.role === 'Admin'
   const [view, setView] = useState('timeline')
-  const [selectedEng, setSelectedEng] = useState(null)
+  const [phaseModal, setPhaseModal] = useState(null)
   const [assignModal, setAssignModal] = useState(null)
   const [statusFilter, setStatusFilter] = useState(defaultStatus)
   const [myOnly, setMyOnly] = useState(false)
@@ -2617,14 +2732,7 @@ function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, curre
             </button>
           ))}
         </div>
-        <div className="flex gap-3 text-xs font-mono flex-wrap">
-          {Object.entries(PHASE_COLORS).map(([phase, cfg]) => (
-            <div key={phase} className="flex items-center gap-1.5">
-              <div className={`w-2 h-2 rounded-full ${cfg.bg}`} />
-              <span className="text-slate-500">{phase}</span>
-            </div>
-          ))}
-        </div>
+        <p className="text-[9px] font-mono text-slate-700">Aktive Phasen sind anklickbar — Notizen & Details einsehbar für zugewiesene Mitglieder und Admins.</p>
       </div>
 
       {showNewModal && (
@@ -2651,56 +2759,92 @@ function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, curre
         </div>
       )}
 
+      {phaseModal && (
+        <PhaseDetailModal
+          engagement={phaseModal.eng}
+          phase={phaseModal.phase}
+          canEdit={isAdmin || (assignments[phaseModal.eng.id] || []).includes(currentUser?.id)}
+          onSave={({ notes, checks }) => {
+            onEdit?.({ ...phaseModal.eng,
+              phaseNotes:  { ...phaseModal.eng.phaseNotes,  [phaseModal.phase]: notes },
+              phaseChecks: { ...phaseModal.eng.phaseChecks, [phaseModal.phase]: checks },
+            })
+            setPhaseModal(null)
+          }}
+          onClose={() => setPhaseModal(null)}
+        />
+      )}
+
       {view === 'timeline' && (
         <Panel>
-          <PanelHeader title="Engagement Timeline" subtitle="Gantt-style view" info={TIPS[tipsLang].engTimeline} />
+          <PanelHeader title="Engagements" subtitle={`${sorted.length} Einträge`} info={TIPS[tipsLang].engTimeline} />
           <div className="p-4 space-y-2">
             {sorted.map(eng => {
               const client = allClientsProp.find(c => c.id === eng.clientId)
-              const borderColor = TYPE_COLORS[eng.type] || 'border-l-slate-500 bg-slate-500/5'
+              const team = assignments[eng.id] || []
+              const canAccess = isAdmin || team.includes(currentUser?.id)
               return (
-                <div
-                  key={eng.id}
-                  className={`border border-[#1e293b] border-l-2 rounded-lg p-3 cursor-pointer hover:border-slate-600 transition-all ${borderColor}`}
-                  onClick={() => setSelectedEng(selectedEng?.id === eng.id ? null : eng)}
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-1 mb-2">
-                    <div className="flex flex-col min-w-0">
-                      <span className="text-xs font-mono font-semibold text-slate-100 truncate">{eng.title}</span>
-                      <span className="text-[10px] font-mono text-slate-600">{client?.name}</span>
+                <div key={eng.id} className="border border-[#1e293b] rounded-lg p-4 hover:border-[#334155] transition-colors">
+
+                  {/* Zeile 1: Titel + Status */}
+                  <div className="flex items-start justify-between gap-3 mb-2">
+                    <div className="min-w-0">
+                      <div className="text-sm font-mono font-semibold text-slate-100 truncate">{eng.title}</div>
+                      <div className="text-[10px] font-mono text-slate-500 mt-0.5">{client?.name} · {eng.type}</div>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="text-[10px] font-mono text-slate-600 hidden sm:inline">{eng.start} → {eng.end}</span>
+                    <div className="shrink-0">
                       {canCycleStatus
                         ? <button onClick={e => { e.stopPropagation(); onStatusChange?.(eng.id) }} title={`→ ${ENG_STATUS_CYCLE[eng.status]}`} className="hover:opacity-75 transition-opacity"><StatusBadge status={eng.status} /></button>
-                        : <StatusBadge status={eng.status} />
-                      }
+                        : <StatusBadge status={eng.status} />}
                     </div>
                   </div>
 
-                  {/* Phase Gantt bars */}
-                  <div className="grid grid-cols-4 gap-1 mt-1">
-                    {['Recon', 'Scanning', 'Exploitation', 'Reporting'].map((phase, i) => {
+                  {/* Zeile 2: Zeitraum */}
+                  <div className="flex items-center gap-1.5 text-[10px] font-mono text-slate-500 mb-3">
+                    <Calendar size={10} className="shrink-0" />
+                    <span>{fmtDate(eng.start, uiLang)}</span>
+                    <span className="text-slate-700">→</span>
+                    <span>{fmtDate(eng.end, uiLang)}</span>
+                    {eng.lead && <><span className="text-slate-700 mx-1">·</span><span className="text-slate-600">Lead: {eng.lead}</span></>}
+                  </div>
+
+                  {/* Zeile 3: Phasen */}
+                  <div className="flex items-center gap-1.5 mb-3">
+                    {['Recon', 'Scanning', 'Exploitation', 'Reporting'].map(phase => {
                       const active = eng.phases.includes(phase)
-                      const cfg = PHASE_COLORS[phase]
+                      const clickable = active && canAccess
+                      const checks = eng.phaseChecks?.[phase] || []
+                      const taskTotal = (PHASE_TASKS[phase] || []).length
+                      const taskDone = checks.length
                       return (
-                        <div key={phase} className={`rounded p-1.5 border ${active ? cfg.border + ' bg-opacity-10' : 'border-transparent'}`}>
-                          <div className={`h-1.5 rounded-full mb-1 ${active ? cfg.bg : 'bg-slate-800'}`} />
-                          <span className={`text-[9px] font-mono ${active ? cfg.text : 'text-slate-700'}`}>{phase}</span>
-                        </div>
+                        <button
+                          key={phase}
+                          disabled={!clickable}
+                          onClick={e => { e.stopPropagation(); clickable && setPhaseModal({ eng, phase }) }}
+                          className={`px-2.5 py-1 rounded text-[9px] font-mono border transition-all ${
+                            active
+                              ? clickable
+                                ? `${PHASE_COLORS[phase].border} ${PHASE_COLORS[phase].text} bg-slate-800/60 hover:bg-slate-700/60 cursor-pointer`
+                                : `${PHASE_COLORS[phase].border} ${PHASE_COLORS[phase].text} bg-slate-800/40 cursor-default`
+                              : 'border-transparent text-slate-700 cursor-default'
+                          }`}
+                          title={clickable ? `${phase} — ${taskDone}/${taskTotal} erledigt` : undefined}
+                        >
+                          {phase}{active && taskTotal > 0 ? ` ${taskDone}/${taskTotal}` : ''}
+                        </button>
                       )
                     })}
                   </div>
 
-                  <div className="flex items-center justify-between mt-2.5">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-[9px] font-mono text-slate-600 uppercase tracking-wider">Team</span>
+                  {/* Zeile 4: Team + Actions */}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
                       <div className="flex -space-x-1.5">
-                        {(assignments[eng.id] || []).map(uid => {
+                        {team.map(uid => {
                           const m = teamMembers.find(t => t.id === uid)
                           return m ? <div key={uid} className="ring-1 ring-[#0f172a] rounded-full"><MemberAvatar member={m} /></div> : null
                         })}
-                        {!(assignments[eng.id] || []).length && <span className="text-[9px] font-mono text-slate-700">—</span>}
+                        {!team.length && <span className="text-[9px] font-mono text-slate-700">Kein Team</span>}
                       </div>
                       {groups.filter(g => g.engagementId === eng.id).map(g => {
                         const gc = GROUP_COLORS[g.color] || GROUP_COLORS.cyan
@@ -2711,34 +2855,39 @@ function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, curre
                         )
                       })}
                     </div>
-                    <div className="flex items-center gap-1">
-                      {currentUser?.role === 'Admin' && (
-                        <button
-                          onClick={e => { e.stopPropagation(); setAssignModal(eng) }}
-                          className="flex items-center gap-1 px-2 py-0.5 rounded border border-[#1e293b] text-[9px] font-mono text-slate-600 hover:text-cyan-400 hover:border-cyan-500/40 transition-all">
-                          <Users2 size={9} /> Zuweisen
+                    <div className="flex items-center gap-1.5">
+                      {isAdmin && (
+                        <button onClick={e => { e.stopPropagation(); setAssignModal(eng) }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-purple-500/40 bg-purple-500/10 text-[10px] font-mono text-purple-300 hover:bg-purple-500/20 hover:border-purple-500/60 transition-all">
+                          <Users2 size={10} /> Zuweisen
                         </button>
                       )}
-                      {(currentUser?.role === 'Admin' || (assignments[eng.id] || []).includes(currentUser?.id)) && (
-                        <button
-                          onClick={e => { e.stopPropagation(); onEngDetail?.(eng.id) }}
-                          className={`flex items-center gap-1 px-2 py-0.5 rounded border text-[9px] font-mono transition-all ${pendingReports[eng.id] ? 'border-yellow-500/40 text-yellow-400 hover:bg-yellow-500/10' : 'border-[#1e293b] text-slate-600 hover:text-slate-300 hover:border-slate-600'}`}>
-                          <FileText size={9} /> Details
+                      {canAccess && (
+                        <button onClick={e => { e.stopPropagation(); onEngDetail?.(eng.id) }}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded border text-[10px] font-mono transition-all ${
+                            pendingReports[eng.id]
+                              ? 'border-yellow-500/50 bg-yellow-500/10 text-yellow-300 hover:bg-yellow-500/20'
+                              : 'border-slate-500/40 bg-slate-500/10 text-slate-300 hover:bg-slate-500/20 hover:border-slate-400/50'
+                          }`}>
+                          <FileText size={10} /> Details
                         </button>
                       )}
+                      {isAdmin && <>
+                        <button onClick={e => { e.stopPropagation(); setEditingEng(eng) }}
+                          className="p-1.5 rounded text-slate-600 hover:text-cyan-400 hover:bg-cyan-500/10 transition-all" title="Bearbeiten">
+                          <Edit3 size={12} />
+                        </button>
+                        <button onClick={e => { e.stopPropagation(); setConfirmDelete(eng) }}
+                          className="p-1.5 rounded text-slate-600 hover:text-red-400 hover:bg-red-400/10 transition-all" title="Löschen">
+                          <Trash2 size={12} />
+                        </button>
+                      </>}
                     </div>
                   </div>
-
-                  {selectedEng?.id === eng.id && (
-                    <div className="mt-3 pt-3 border-t border-[#1e293b] grid grid-cols-3 gap-3 text-xs font-mono">
-                      <div><span className="text-slate-600">Type</span><div className="text-slate-300">{eng.type}</div></div>
-                      <div><span className="text-slate-600">Lead</span><div className="text-slate-300">{eng.lead}</div></div>
-                      <div><span className="text-slate-600">Phases</span><div className="text-slate-300">{eng.phases.length}/4</div></div>
-                    </div>
-                  )}
                 </div>
               )
             })}
+            {!sorted.length && <p className="text-center text-xs font-mono text-slate-700 py-8">Keine Engagements gefunden.</p>}
           </div>
         </Panel>
       )}
@@ -2761,7 +2910,7 @@ function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, curre
           <table className="w-full text-xs font-mono min-w-[600px]">
             <thead>
               <tr className="border-b border-[#1e293b]">
-                {['Engagement', 'Client', 'Type', 'Start', 'End', 'Status', 'Phases', 'Team', ''].map(h => (
+                {['Engagement', 'Client', 'Typ', 'Zeitraum', 'Status', 'Phasen', 'Team', ''].map(h => (
                   <th key={h} className="px-4 py-3 text-left text-[10px] text-slate-600 uppercase tracking-wider font-normal">{h}</th>
                 ))}
               </tr>
@@ -2769,13 +2918,21 @@ function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, curre
             <tbody className="divide-y divide-[#1e293b]">
               {sorted.map(eng => {
                 const client = allClientsProp.find(c => c.id === eng.clientId)
+                const team = assignments[eng.id] || []
+                const canAccess = isAdmin || team.includes(currentUser?.id)
                 return (
                   <tr key={eng.id} className="hover:bg-slate-800/30 transition-colors">
-                    <td className="px-4 py-3 text-slate-200 font-medium">{eng.title}</td>
-                    <td className="px-4 py-3 text-slate-400">{client?.name}</td>
-                    <td className="px-4 py-3 text-slate-400">{eng.type}</td>
-                    <td className="px-4 py-3 text-slate-500">{eng.start}</td>
-                    <td className="px-4 py-3 text-slate-500">{eng.end}</td>
+                    <td className="px-4 py-3">
+                      <div className="text-xs font-mono font-medium text-slate-200">{eng.title}</div>
+                      <div className="text-[9px] font-mono text-slate-600 mt-0.5">{eng.lead ? `Lead: ${eng.lead}` : ''}</div>
+                    </td>
+                    <td className="px-4 py-3 text-slate-400 text-xs font-mono">{client?.name}</td>
+                    <td className="px-4 py-3 text-slate-500 text-[10px] font-mono">{eng.type}</td>
+                    <td className="px-4 py-3 text-slate-500 text-[10px] font-mono whitespace-nowrap">
+                      <span>{fmtDate(eng.start, uiLang)}</span>
+                      <span className="text-slate-700 mx-1">→</span>
+                      <span>{fmtDate(eng.end, uiLang)}</span>
+                    </td>
                     <td className="px-4 py-3">
                       {canCycleStatus
                         ? <button onClick={() => onStatusChange?.(eng.id)} title={`→ ${ENG_STATUS_CYCLE[eng.status]}`} className="hover:opacity-75 transition-opacity"><StatusBadge status={eng.status} /></button>
@@ -2783,26 +2940,58 @@ function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, curre
                       }
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex gap-1">
-                        {eng.phases.map(p => (
-                          <span key={p} className={`px-1 py-0.5 rounded text-[9px] font-mono ${PHASE_COLORS[p].text} bg-slate-800`}>{p.slice(0, 3)}</span>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex -space-x-1.5">
-                        {(assignments[eng.id] || []).map(uid => {
-                          const m = teamMembers.find(t => t.id === uid)
-                          return m ? <div key={uid} className="ring-1 ring-[#0a0a0a] rounded-full"><MemberAvatar member={m} /></div> : null
+                      <div className="flex gap-1 flex-wrap">
+                        {['Recon', 'Scanning', 'Exploitation', 'Reporting'].map(phase => {
+                          const active = eng.phases.includes(phase)
+                          const clickable = active && canAccess
+                          const checks = eng.phaseChecks?.[phase] || []
+                          const taskTotal = (PHASE_TASKS[phase] || []).length
+                          const taskDone = checks.length
+                          return (
+                            <button
+                              key={phase}
+                              disabled={!clickable}
+                              onClick={() => clickable && setPhaseModal({ eng, phase })}
+                              title={clickable ? `${phase} — ${taskDone}/${taskTotal} erledigt` : undefined}
+                              className={`px-1.5 py-0.5 rounded text-[9px] font-mono border transition-all ${
+                                active
+                                  ? clickable
+                                    ? `${PHASE_COLORS[phase].border} ${PHASE_COLORS[phase].text} bg-slate-800/60 hover:bg-slate-700/60 cursor-pointer`
+                                    : `${PHASE_COLORS[phase].border} ${PHASE_COLORS[phase].text} bg-slate-800/40 cursor-default`
+                                  : 'border-transparent text-slate-700 cursor-default'
+                              }`}
+                            >
+                              {phase.slice(0, 3)}{active && taskTotal > 0 ? ` ${taskDone}/${taskTotal}` : ''}
+                            </button>
+                          )
                         })}
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex items-center gap-1">
-                        {(isAdmin || (assignments[eng.id] || []).includes(currentUser?.id)) && (
+                      <div className="flex -space-x-1.5">
+                        {team.map(uid => {
+                          const m = teamMembers.find(t => t.id === uid)
+                          return m ? <div key={uid} className="ring-1 ring-[#0a0a0a] rounded-full"><MemberAvatar member={m} /></div> : null
+                        })}
+                        {!team.length && <span className="text-[9px] font-mono text-slate-700">—</span>}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1.5">
+                        {canAccess && (
                           <button onClick={() => onEngDetail?.(eng.id)}
-                            className={`flex items-center gap-1 px-2 py-0.5 rounded border text-[9px] font-mono transition-all ${pendingReports[eng.id] ? 'border-yellow-500/40 text-yellow-400 hover:bg-yellow-500/10' : 'border-[#1e293b] text-slate-600 hover:text-slate-300 hover:border-slate-600'}`}>
-                            <FileText size={9} /> Details
+                            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded border text-[10px] font-mono transition-all ${
+                              pendingReports[eng.id]
+                                ? 'border-yellow-500/50 bg-yellow-500/10 text-yellow-300 hover:bg-yellow-500/20'
+                                : 'border-slate-500/40 bg-slate-500/10 text-slate-300 hover:bg-slate-500/20 hover:border-slate-400/50'
+                            }`}>
+                            <FileText size={10} /> Details
+                          </button>
+                        )}
+                        {isAdmin && (
+                          <button onClick={() => setAssignModal(eng)}
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded border border-purple-500/40 bg-purple-500/10 text-[10px] font-mono text-purple-300 hover:bg-purple-500/20 hover:border-purple-500/60 transition-all">
+                            <Users2 size={10} /> Zuweisen
                           </button>
                         )}
                         {isAdmin && (
@@ -3523,7 +3712,7 @@ function UserManagementSection({ members, currentUser, onAdd, onRemove, onEdit }
 
 // ─── TIME TRACKING SECTION ───────────────────────────────────────────────────
 
-function TimeTrackingSection({ entries, currentUser, members }) {
+function TimeTrackingSection({ entries, currentUser, members, uiLang = 'en' }) {
   const isAdmin = currentUser?.role === 'Admin'
   const [userFilter, setUserFilter] = useState('all')
   const [range, setRange] = useState('week')
@@ -3633,7 +3822,7 @@ function TimeTrackingSection({ entries, currentUser, members }) {
                       </div>
                     </td>
                   )}
-                  <td className="px-4 py-3 text-slate-400">{e.date}</td>
+                  <td className="px-4 py-3 text-slate-400">{fmtDate(e.date, uiLang)}</td>
                   <td className="px-4 py-3 text-slate-300 tabular-nums">{e.start}</td>
                   <td className="px-4 py-3 text-slate-300 tabular-nums">{e.end}</td>
                   <td className="px-4 py-3">
@@ -3650,13 +3839,7 @@ function TimeTrackingSection({ entries, currentUser, members }) {
   )
 }
 
-function SettingsPage({ members, currentUser, onAdd, onRemove, onEdit, timeEntries, darkMode, onToggleDark, uiLang, onUiLangChange, tipsLang, onTipsLangChange }) {
-  const isAdmin = currentUser?.role === 'Admin'
-  const [tab, setTab]             = useState(isAdmin ? 'users' : 'general')
-  const [apiKey, setApiKey]       = useState('sk-holysec-••••••••••••••••')
-  const [notifications, setNotifications] = useState(true)
-  const [nickname, setNickname]   = useState(currentUser?.nickname || '')
-  const [nickSaved, setNickSaved] = useState(false)
+function TimeTrackingPage({ timeEntries, currentUser, members, uiLang = 'en' }) {
   const [exportRange,    setExportRange]    = useState('week')
   const [exportMemberId, setExportMemberId] = useState('all')
 
@@ -3678,10 +3861,64 @@ function SettingsPage({ members, currentUser, onAdd, onRemove, onEdit, timeEntri
       : members.filter(m => m.id === exportMemberId)
   }, [exportMemberId, members, timeEntries, exportRangeStart])
 
+  return (
+    <div className="p-3 lg:p-6 max-w-5xl space-y-5">
+      <TimeTrackingSection entries={timeEntries} currentUser={currentUser} members={members} uiLang={uiLang} />
+      <Panel>
+        <PanelHeader title="PDF Export" subtitle="Zeiterfassung eines Mitarbeiters oder aller Mitarbeiter ausgeben" />
+        <div className="p-5 space-y-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-xs font-mono text-slate-200">Zeitraum</div>
+              <div className="text-[10px] font-mono text-slate-600">Welcher Zeitraum soll exportiert werden?</div>
+            </div>
+            <div className="flex gap-1">
+              {[['week', 'Diese Woche'], ['month', 'Dieser Monat']].map(([val, label]) => (
+                <button key={val} onClick={() => setExportRange(val)}
+                  className={`px-3 py-1.5 rounded text-xs font-mono border transition-all ${exportRange === val ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-400' : 'border-[#1e293b] text-slate-500 hover:text-slate-300 hover:border-slate-600'}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-xs font-mono text-slate-200">Mitarbeiter</div>
+              <div className="text-[10px] font-mono text-slate-600">Einzelne Person oder alle auf einmal</div>
+            </div>
+            <select value={exportMemberId} onChange={e => setExportMemberId(e.target.value)}
+              className="bg-[#0a0a0a] border border-[#1e293b] rounded px-3 py-1.5 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500/50 w-52">
+              <option value="all">Alle Mitarbeiter</option>
+              {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+            </select>
+          </div>
+          <div className="flex justify-end pt-1">
+            <button
+              onClick={() => exportTargets.forEach((m, i) => setTimeout(() => exportTimePDF(m, timeEntries, exportRange), i * 300))}
+              disabled={exportTargets.length === 0}
+              className="flex items-center gap-2 px-4 py-2 bg-cyan-500/10 border border-cyan-500/30 rounded text-xs font-mono text-cyan-400 hover:bg-cyan-500/20 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
+              <Download size={13} />
+              {exportMemberId === 'all'
+                ? `${exportTargets.length} PDF${exportTargets.length !== 1 ? 's' : ''} generieren`
+                : 'PDF generieren'}
+            </button>
+          </div>
+        </div>
+      </Panel>
+    </div>
+  )
+}
+
+function SettingsPage({ members, currentUser, onAdd, onRemove, onEdit, timeEntries, darkMode, onToggleDark, uiLang, onUiLangChange, tipsLang, onTipsLangChange }) {
+  const isAdmin = currentUser?.role === 'Admin'
+  const [tab, setTab]             = useState('general')
+  const [apiKey, setApiKey]       = useState('sk-holysec-••••••••••••••••')
+  const [notifications, setNotifications] = useState(true)
+  const [nickname, setNickname]   = useState(currentUser?.nickname || '')
+  const [nickSaved, setNickSaved] = useState(false)
+
   const tabs = [
-    ...(isAdmin ? [{ id: 'users',   label: 'Benutzerverwaltung', icon: Users2 }] : []),
-    { id: 'general',  label: 'Allgemein',     icon: Settings },
-    { id: 'time',     label: 'Zeiterfassung', icon: ClipboardList },
+    { id: 'general',  label: 'Allgemein', icon: Settings },
     ...(isAdmin ? [
       { id: 'api',     label: 'API & Integrationen', icon: Zap },
       { id: 'billing', label: 'Lizenz & System',     icon: Star },
@@ -3698,17 +3935,8 @@ function SettingsPage({ members, currentUser, onAdd, onRemove, onEdit, timeEntri
               <t.icon size={12} /> {t.label}
             </button>
           ))}
-          {!isAdmin && (
-            <div className="ml-auto flex items-center gap-1.5 text-[10px] font-mono text-slate-600 pb-2 pr-1 whitespace-nowrap">
-              <Lock size={10} /> Erweiterte Einstellungen nur für Admins
-            </div>
-          )}
         </div>
       </div>
-
-      {tab === 'users' && isAdmin && (
-        <UserManagementSection members={members} currentUser={currentUser} onAdd={onAdd} onRemove={onRemove} onEdit={onEdit} />
-      )}
 
       {tab === 'general' && (
         <Panel>
@@ -3801,65 +4029,6 @@ function SettingsPage({ members, currentUser, onAdd, onRemove, onEdit, timeEntri
             </div>
           </div>
         </Panel>
-      )}
-
-      {tab === 'time' && (
-        <>
-          <TimeTrackingSection entries={timeEntries} currentUser={currentUser} members={members} />
-          {isAdmin && (
-            <Panel>
-              <PanelHeader title="PDF Export" subtitle="Zeiterfassung eines Mitarbeiters oder aller Mitarbeiter ausgeben" />
-              <div className="p-5 space-y-5">
-                {/* Zeitraum */}
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-xs font-mono text-slate-200">Zeitraum</div>
-                    <div className="text-[10px] font-mono text-slate-600">Welcher Zeitraum soll exportiert werden?</div>
-                  </div>
-                  <div className="flex gap-1">
-                    {[['week', 'Diese Woche'], ['month', 'Dieser Monat']].map(([val, label]) => (
-                      <button key={val} onClick={() => setExportRange(val)}
-                        className={`px-3 py-1.5 rounded text-xs font-mono border transition-all ${exportRange === val ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-400' : 'border-[#1e293b] text-slate-500 hover:text-slate-300 hover:border-slate-600'}`}>
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Mitarbeiter */}
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-xs font-mono text-slate-200">Mitarbeiter</div>
-                    <div className="text-[10px] font-mono text-slate-600">Einzelne Person oder alle auf einmal</div>
-                  </div>
-                  <select
-                    value={exportMemberId}
-                    onChange={e => setExportMemberId(e.target.value)}
-                    className="bg-[#0a0a0a] border border-[#1e293b] rounded px-3 py-1.5 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500/50 w-52">
-                    <option value="all">Alle Mitarbeiter</option>
-                    {members.map(m => (
-                      <option key={m.id} value={m.id}>{m.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Export-Button */}
-                <div className="flex justify-end pt-1">
-                  <button
-                    onClick={() => exportTargets.forEach((m, i) => setTimeout(() => exportTimePDF(m, timeEntries, exportRange), i * 300))}
-                    disabled={exportTargets.length === 0}
-                    className="flex items-center gap-2 px-4 py-2 bg-cyan-500/10 border border-cyan-500/30 rounded text-xs font-mono text-cyan-400 hover:bg-cyan-500/20 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
-                    <Download size={13} />
-                    {exportMemberId === 'all'
-                      ? `${exportTargets.length} PDF${exportTargets.length !== 1 ? 's' : ''} generieren`
-                      : 'PDF generieren'
-                    }
-                  </button>
-                </div>
-              </div>
-            </Panel>
-          )}
-        </>
       )}
 
       {tab === 'api' && isAdmin && (
@@ -4192,7 +4361,7 @@ function downloadReportTemplate(engagement, client) {
   doc.save(`holysec_template_${(engagement?.title || 'report').replace(/\s+/g, '_')}.pdf`)
 }
 
-function EngagementDetail({ engagementId, onBack, clients: allClients = CLIENTS, teamMembers = [], assignments = {}, engagements: allEngagements = ENGAGEMENTS, pendingReports = {}, onSetPendingReport, currentUser, onEdit, onDelete }) {
+function EngagementDetail({ engagementId, onBack, clients: allClients = CLIENTS, teamMembers = [], assignments = {}, engagements: allEngagements = ENGAGEMENTS, pendingReports = {}, onSetPendingReport, currentUser, onEdit, onDelete, uiLang = 'en' }) {
   const engagement = allEngagements.find(e => e.id === engagementId)
   const client = allClients.find(c => c.id === engagement?.clientId)
   const assignedMembers = (assignments[engagementId] || []).map(uid => teamMembers.find(t => t.id === uid)).filter(Boolean)
@@ -4295,11 +4464,11 @@ function EngagementDetail({ engagementId, onBack, clients: allClients = CLIENTS,
 
           {/* Engagement Details */}
           <Panel>
-            <PanelHeader title="Engagement Details" subtitle={`${engagement.start} → ${engagement.end}`} />
+            <PanelHeader title="Engagement Details" subtitle={`${fmtDate(engagement.start, uiLang)} → ${fmtDate(engagement.end, uiLang)}`} />
             <div className="p-4 grid grid-cols-2 gap-4">
               <div>
                 <div className="text-[9px] font-mono text-slate-600 uppercase mb-1">Zeitraum</div>
-                <div className="text-sm font-mono text-slate-200">{engagement.start} → {engagement.end}</div>
+                <div className="text-sm font-mono text-slate-200">{fmtDate(engagement.start, uiLang)} → {fmtDate(engagement.end, uiLang)}</div>
               </div>
               <div>
                 <div className="text-[9px] font-mono text-slate-600 uppercase mb-1">Lead</div>
@@ -4493,7 +4662,7 @@ function EngagementDetail({ engagementId, onBack, clients: allClients = CLIENTS,
                   </div>
                   <div>
                     <div className="text-[9px] font-mono text-slate-600 uppercase mb-2">Vertrag</div>
-                    <div className="text-[10px] font-mono text-slate-400 mb-2">{client.contract?.start} → {client.contract?.end}</div>
+                    <div className="text-[10px] font-mono text-slate-400 mb-2">{fmtDate(client.contract?.start, uiLang)} → {fmtDate(client.contract?.end, uiLang)}</div>
                     <div className="flex justify-between text-[9px] font-mono text-slate-600 mb-1.5">
                       <span>Stunden</span>
                       <span className={hoursPercent > 0.85 ? 'text-red-400' : 'text-slate-400'}>{hoursUsed} / {hoursTotal}h</span>
@@ -4556,7 +4725,7 @@ const ROLE_BADGE = {
   'Junior Pentester': 'text-blue-400 bg-blue-400/10 border-blue-400/20',
 }
 
-function TeamPage({ members, currentUser, onAdd, onRemove, assignments, engagements, userPresence = 'online', timeEntries = [], onAuditLog }) {
+function TeamPage({ members, currentUser, onAdd, onRemove, assignments, engagements, userPresence = 'online', timeEntries = [], onAuditLog, uiLang = 'en' }) {
   const [showAdd, setShowAdd] = useState(false)
   const [roleFilter, setRoleFilter] = useState('All')
   const [timeDetailMember, setTimeDetailMember] = useState(null)
@@ -4674,7 +4843,7 @@ function TeamPage({ members, currentUser, onAdd, onRemove, assignments, engageme
 
       {showAdd && <AddEditMemberModal onAdd={onAdd} onClose={() => setShowAdd(false)} />}
       {timeDetailMember && (
-        <MemberTimeDetailModal member={timeDetailMember} timeEntries={timeEntries} onClose={() => setTimeDetailMember(null)} onExport={onAuditLog} />
+        <MemberTimeDetailModal member={timeDetailMember} timeEntries={timeEntries} onClose={() => setTimeDetailMember(null)} onExport={onAuditLog} uiLang={uiLang} />
       )}
     </div>
   )
@@ -4741,7 +4910,7 @@ function exportTimePDF(member, allEntries, range) {
   doc.save(`holysec_zeit_${member.name.replace(/\s+/g, '_')}_${rangeStr}_${now.toISOString().split('T')[0]}.pdf`)
 }
 
-function MemberTimeDetailModal({ member, timeEntries, onClose, onExport }) {
+function MemberTimeDetailModal({ member, timeEntries, onClose, onExport, uiLang = 'en' }) {
   const entries = timeEntries.filter(e => e.userId === member.id)
   const totalSecs = entries.reduce((s, e) => s + e.duration, 0)
 
@@ -4846,7 +5015,7 @@ function MemberTimeDetailModal({ member, timeEntries, onClose, onExport }) {
               <tbody className="divide-y divide-[#1e293b]">
                 {[...entries].reverse().map(e => (
                   <tr key={e.id} className="hover:bg-slate-800/20 transition-colors">
-                    <td className="px-5 py-3 text-slate-400">{e.date}</td>
+                    <td className="px-5 py-3 text-slate-400">{fmtDate(e.date, uiLang)}</td>
                     <td className="px-5 py-3 text-slate-300 tabular-nums">{e.start}</td>
                     <td className="px-5 py-3 text-slate-300 tabular-nums">{e.end || '—'}</td>
                     <td className="px-5 py-3 text-cyan-400 font-semibold tabular-nums">{formatDuration(e.duration)}</td>
@@ -4979,9 +5148,7 @@ function ClientMapPage({ clients = CLIENTS, darkMode = true, onClientClick }) {
       zoom: 6,
       zoomControl: true,
       maxZoom: 14,
-      wheelPxPerZoomLevel: 120,
-      zoomSnap: 0.5,
-      zoomDelta: 0.5,
+      wheelPxPerZoomLevel: 200,
       keepBuffer: 4,
       boxZoom: false,
       fadeAnimation: true,
@@ -4993,6 +5160,7 @@ function ClientMapPage({ clients = CLIENTS, darkMode = true, onClientClick }) {
       tap: false,
     })
     mapRef.current = map
+    mapDivRef.current.style.background = darkMode ? '#0f172a' : '#f0f0f0'
 
     L.tileLayer(
       darkMode
@@ -5599,6 +5767,9 @@ export default function App() {
   const [uiLang, setUiLang] = useState(() => localStorage.getItem('holysec_ui_lang') || 'en')
   const [tipsLang, setTipsLang] = useState(() => localStorage.getItem('holysec_tips_lang') || 'de')
   const [engStatusOverrides, setEngStatusOverrides] = useState({})
+  const [engDataOverrides, setEngDataOverrides] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('holysec_eng_data_overrides') || '{}') } catch { return {} }
+  })
   const [pendingReports, setPendingReports] = useState(() => {
     try { return JSON.parse(localStorage.getItem('holysec_pending_reports') || '{}') } catch { return {} }
   })
@@ -5631,6 +5802,7 @@ export default function App() {
         apiPut('holysec_pending_reports', pendingReports)
         apiPut('holysec_assignments', assignments)
         apiPut('holysec_eng_status_overrides', engStatusOverrides)
+        apiPut('holysec_eng_data_overrides', engDataOverrides)
       } else {
         if (state.holysec_clients)              setClients(state.holysec_clients)
         if (state.holysec_team_members)         setTeamMembers(state.holysec_team_members)
@@ -5645,6 +5817,7 @@ export default function App() {
         if (state.holysec_pending_reports)      setPendingReports(state.holysec_pending_reports)
         if (state.holysec_assignments)          setAssignments(state.holysec_assignments)
         if (state.holysec_eng_status_overrides) setEngStatusOverrides(state.holysec_eng_status_overrides)
+        if (state.holysec_eng_data_overrides)   setEngDataOverrides(state.holysec_eng_data_overrides)
       }
       apiLoadedRef.current = true
     }).catch(() => { apiLoadedRef.current = true })
@@ -5774,6 +5947,11 @@ export default function App() {
     if (apiLoadedRef.current) apiPut('holysec_eng_status_overrides', engStatusOverrides)
   }, [engStatusOverrides])
 
+  useEffect(() => {
+    localStorage.setItem('holysec_eng_data_overrides', JSON.stringify(engDataOverrides))
+    if (apiLoadedRef.current) apiPut('holysec_eng_data_overrides', engDataOverrides)
+  }, [engDataOverrides])
+
   const handleAddGroup    = useCallback((g) => { setEngagementGroups(p => [...p, g]); logEvent('GRUPPE_ERSTELLT', g.name, 'groups') }, [logEvent])
   const handleEditGroup   = useCallback((g) => { setEngagementGroups(p => p.map(x => x.id === g.id ? g : x)); logEvent('GRUPPE_BEARBEITET', g.name, 'groups') }, [logEvent])
   const handleDeleteGroup = useCallback((id) => { setEngagementGroups(p => p.filter(x => x.id !== id)); logEvent('GRUPPE_GELÖSCHT', `ID: ${id}`, 'groups') }, [logEvent])
@@ -5825,7 +6003,7 @@ export default function App() {
       logEvent('ZEITERFASSUNG_STOP', `Dauer: ${formatDurationShort(duration)} (Logout)`, 'time')
     }
     logEvent('LOGOUT', 'Abgemeldet', 'auth')
-    setToken(null)
+    apiLogout()
     setCurrentUser(null)
     setPage('dashboard')
   }, [logEvent, activeTimer])
@@ -5902,6 +6080,10 @@ export default function App() {
       setCustomEngagements(prev => prev.map(e => e.id === eng.id ? { ...e, ...eng } : e))
     } else {
       setEngStatusOverrides(prev => ({ ...prev, [eng.id]: eng.status }))
+      setEngDataOverrides(prev => ({
+        ...prev,
+        [eng.id]: { ...prev[eng.id], phaseNotes: eng.phaseNotes, phaseChecks: eng.phaseChecks },
+      }))
     }
     logEvent('ENGAGEMENT_BEARBEITET', `"${eng.title}"`, 'engagements')
   }, [customEngagements, logEvent])
@@ -6037,9 +6219,13 @@ export default function App() {
   const allEngagements = useMemo(() => [
     ...ENGAGEMENTS
       .filter(e => !engStatusOverrides[`_del_${e.id}`])
-      .map(e => engStatusOverrides[e.id] ? { ...e, status: engStatusOverrides[e.id] } : e),
+      .map(e => {
+        const extra = engDataOverrides[e.id] || {}
+        const status = engStatusOverrides[e.id] ? { status: engStatusOverrides[e.id] } : {}
+        return { ...e, ...extra, ...status }
+      }),
     ...customEngagements,
-  ], [customEngagements, engStatusOverrides])
+  ], [customEngagements, engStatusOverrides, engDataOverrides])
   const allFindings = useMemo(() => [...FINDINGS, ...customFindings]
     .filter(f => !deletedFindingIds.has(f.id))
     .map(f => findingEdits[f.id] ? findingEdits[f.id] : f),
@@ -6052,12 +6238,14 @@ export default function App() {
   const titleInfo = PAGE_TITLES[page] || PAGE_TITLES['dashboard']
 
   return (
+    <>
     <div className="flex h-screen bg-[#0a0a0a] text-slate-200 overflow-hidden">
       <Sidebar
         active={page} onNav={p => handleNav(p)}
         collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(v => !v)}
         currentUser={currentUser} onLogout={handleLogout} uiLang={uiLang}
         mobileOpen={mobileMenuOpen} onMobileClose={() => setMobileMenuOpen(false)}
+        onSettingsOpen={() => handleNav('settings')}
       />
 
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
@@ -6081,18 +6269,25 @@ export default function App() {
           <div style={page === 'map' ? { height: '100%' } : { position: 'absolute', inset: 0, opacity: 0, pointerEvents: 'none', zIndex: -1 }}>
             {page === 'map' && <ClientMapPage clients={clients} darkMode={darkMode} onClientClick={handleClientClick} />}
           </div>
-          {page === 'client-detail'    && selectedClientId && <ClientDetail clientId={selectedClientId} onBack={handleBackToClients} clients={clients} tipsLang={tipsLang} onNav={handleNav} />}
+          {page === 'client-detail'    && selectedClientId && <ClientDetail clientId={selectedClientId} onBack={handleBackToClients} clients={clients} tipsLang={tipsLang} uiLang={uiLang} onNav={handleNav} />}
           {page === 'findings'         && <FindingsTracker currentUser={currentUser} assignments={assignments} findings={allFindings} onAddFinding={handleAddFinding} onEditFinding={handleEditFinding} onDeleteFinding={handleDeleteFinding} clients={clients} teamMembers={teamMembers} engagements={allEngagements} onSendReminder={handleSendReminder} defaultSeverity={pageOpts.severity} defaultStatus={pageOpts.status} defaultClientId={pageOpts.clientId || 'All'} defaultFindingId={pageOpts.findingId || null} tipsLang={tipsLang} />}
-          {page === 'engagements'      && <EngagementPlanner teamMembers={teamMembers} assignments={assignments} onAssign={handleAssign} currentUser={currentUser} groups={engagementGroups} engagements={allEngagements} onAddEngagement={handleAddEngagement} onStatusChange={handleEngStatusChange} onEdit={handleEditEngagement} onDelete={handleDeleteEngagement} clients={clients} defaultStatus={pageOpts.status} defaultClientId={pageOpts.clientId || null} tipsLang={tipsLang} pendingReports={pendingReports} onEngDetail={handleEngDetailClick} />}
-          {page === 'eng-detail'       && selectedEngId && <EngagementDetail engagementId={selectedEngId} onBack={handleBackToEngagements} clients={clients} teamMembers={teamMembers} assignments={assignments} engagements={allEngagements} pendingReports={pendingReports} onSetPendingReport={handleSetPendingReport} currentUser={currentUser} onEdit={handleEditEngagement} onDelete={handleDeleteEngagement} />}
+          {page === 'engagements'      && <EngagementPlanner teamMembers={teamMembers} assignments={assignments} onAssign={handleAssign} currentUser={currentUser} groups={engagementGroups} engagements={allEngagements} onAddEngagement={handleAddEngagement} onStatusChange={handleEngStatusChange} onEdit={handleEditEngagement} onDelete={handleDeleteEngagement} clients={clients} defaultStatus={pageOpts.status} defaultClientId={pageOpts.clientId || null} tipsLang={tipsLang} uiLang={uiLang} pendingReports={pendingReports} onEngDetail={handleEngDetailClick} />}
+          {page === 'eng-detail'       && selectedEngId && <EngagementDetail engagementId={selectedEngId} onBack={handleBackToEngagements} clients={clients} teamMembers={teamMembers} assignments={assignments} engagements={allEngagements} pendingReports={pendingReports} onSetPendingReport={handleSetPendingReport} currentUser={currentUser} onEdit={handleEditEngagement} onDelete={handleDeleteEngagement} uiLang={uiLang} />}
           {page === 'eng-groups'       && <EngagementGroupsPage groups={engagementGroups} onAdd={handleAddGroup} onEdit={handleEditGroup} onDelete={handleDeleteGroup} teamMembers={teamMembers} currentUser={currentUser} />}
           {page === 'reports'          && <ReportingCenter reports={reports} onStatusChange={handleReportStatusChange} onAdd={handleAddReport} currentUser={currentUser} assignments={assignments} onAuditLog={handleAuditLogDownload} tipsLang={tipsLang} />}
-          {page === 'team'             && <TeamPage members={teamMembers} currentUser={currentUser} onAdd={handleAddMember} onRemove={handleRemoveMember} assignments={assignments} engagements={allEngagements} userPresence={userPresence} timeEntries={timeEntries} onAuditLog={handleAuditLogDownload} />}
+          {page === 'team'             && <TeamPage members={teamMembers} currentUser={currentUser} onAdd={handleAddMember} onRemove={handleRemoveMember} assignments={assignments} engagements={allEngagements} userPresence={userPresence} timeEntries={timeEntries} onAuditLog={handleAuditLogDownload} uiLang={uiLang} />}
+          {page === 'user-management'  && currentUser?.role === 'Admin' && (
+            <div className="p-3 lg:p-6 max-w-5xl">
+              <UserManagementSection members={teamMembers} currentUser={currentUser} onAdd={handleAddMember} onRemove={handleRemoveMember} onEdit={handleEditMember} />
+            </div>
+          )}
+          {page === 'time-tracking'    && currentUser?.role === 'Admin' && <TimeTrackingPage timeEntries={timeEntries} currentUser={currentUser} members={teamMembers} uiLang={uiLang} />}
           {page === 'audit'            && <AuditLogPage logs={auditLogs} teamMembers={teamMembers} onClear={handleClearAuditLogs} tipsLang={tipsLang} />}
           {page === 'about'            && <AboutHolySec />}
           {page === 'settings'         && <SettingsPage members={teamMembers} currentUser={currentUser} onAdd={handleAddMember} onRemove={handleRemoveMember} onEdit={handleEditMember} timeEntries={timeEntries} darkMode={darkMode} onToggleDark={() => setDarkMode(v => !v)} uiLang={uiLang} onUiLangChange={setUiLang} tipsLang={tipsLang} onTipsLangChange={setTipsLang} />}
         </main>
       </div>
     </div>
+    </>
   )
 }

@@ -1,5 +1,6 @@
 require('dotenv').config({ path: require('path').join(__dirname, '.env') })
-
+const bcrypt = require('bcrypt')
+const cookieParser = require('cookie-parser')
 const express    = require('express')
 const Database   = require('better-sqlite3')
 const cors       = require('cors')
@@ -75,18 +76,18 @@ function getAllUsers() {
 // ─── JWT MIDDLEWARE ───────────────────────────────────────────────────────────
 
 function requireAuth(req, res, next) {
-  const auth = req.headers.authorization
-  if (!auth || !auth.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Unauthorized' })
-  }
+  const token = req.cookies?.holysec_jwt
+  if (!token) return res.status(401).json({ error: 'Unauthorized' })
   try {
-    req.user = jwt.verify(auth.slice(7), JWT_SECRET)
+    req.user = jwt.verify(token, JWT_SECRET)
     next()
   } catch (err) {
     const msg = err.name === 'TokenExpiredError' ? 'Token abgelaufen' : 'Ungültiges Token'
+    res.clearCookie('holysec_jwt')
     return res.status(401).json({ error: msg })
   }
 }
+
 
 // ─── RATE LIMITING ────────────────────────────────────────────────────────────
 
@@ -102,9 +103,11 @@ const loginLimiter = rateLimit({
 
 app.use(cors({
   origin: ALLOWED_ORIGIN,
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type'],
+  credentials: true,
 }))
 app.use(express.json({ limit: '20mb' }))
+app.use(cookieParser())
 
 // ─── STATIC FRONTEND ──────────────────────────────────────────────────────────
 
@@ -121,9 +124,8 @@ app.post('/api/auth/login', loginLimiter, (req, res) => {
   }
 
   const users = getAllUsers()
-  const user = users.find(u => u.email === email && u.password === password)
-
-  if (!user) {
+  const user = users.find(u => u.email === email)
+  if (!user || !bcrypt.compareSync(password, user.password)) {
     return res.status(401).json({ error: 'Ungültige Zugangsdaten.' })
   }
 
@@ -133,11 +135,22 @@ app.post('/api/auth/login', loginLimiter, (req, res) => {
     { expiresIn: '8h' }
   )
 
-  res.json({ token, memberId: user.memberId })
+  res.cookie('holysec_jwt', token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    maxAge: 8 * 60 * 60 * 1000,
+  })
+  res.json({ memberId: user.memberId })
 })
 
 app.get('/api/auth/me', requireAuth, (req, res) => {
   res.json(req.user)
+})
+
+app.post('/api/auth/logout', (req, res) => {
+  res.clearCookie('holysec_jwt')
+  res.json({ ok: true })
 })
 
 // ─── PROTECTED API ROUTES ─────────────────────────────────────────────────────

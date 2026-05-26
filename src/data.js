@@ -199,8 +199,5 @@ export const TEAM_MEMBERS = [
   { id: 'u003', name: 'Lisa Köhler', email: 'lisa@holysec.de', role: 'Pentester', title: 'Web Security Analyst', skills: ['Web', 'Social Engineering', 'OSINT'], status: 'Active', initials: 'LK', color: 'purple' },
 ]
 
-export const USERS_AUTH = [
-  { memberId: 'u001', email: 'leif@holysec.de', password: 'HolySec2024!' },
-  { memberId: 'u002', email: 'max@holysec.de', password: 'Pentest123!' },
-  { memberId: 'u003', email: 'lisa@holysec.de', password: 'Pentest123!' },
-]
+export const USERS_AUTH = []
+
