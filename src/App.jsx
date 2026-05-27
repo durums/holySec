@@ -5484,17 +5484,17 @@ function ClientMapPage({ clients = [], darkMode = true, onClientClick }) {
       const col  = CRITICALITY_COLOR[c0.criticality] || CRITICALITY_COLOR.LOW
       const icon = makeMarkerIcon(col, group.length)
       const marker = L.marker([c0.lat, c0.lng], { icon })
-      marker.on('click', e => {
-        L.DomEvent.stopPropagation(e)
-        if (group.length === 1) return  // normales Popup via bindPopup
-        expandSpider(marker.getLatLng(), group)
-      })
+      marker.on('click', e => L.DomEvent.stopPropagation(e))
 
       if (group.length === 1) {
+        // Einzelmarker → in Cluster-Group (nimmt an geografischem Clustering teil)
         marker.bindPopup(makeSinglePopup(c0), popupOpts)
+        clusterGroup.addLayer(marker)
+      } else {
+        // Gruppen-Marker (gleiche Koordinaten) → direkt auf Map, kein Cluster
+        marker.on('click', () => expandSpider(marker.getLatLng(), group))
+        marker.addTo(map)
       }
-
-      clusterGroup.addLayer(marker)
     })
 
     map.addLayer(clusterGroup)
