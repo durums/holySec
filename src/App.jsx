@@ -5248,6 +5248,7 @@ function ClientMapPage({ clients = [], darkMode = true, onClientClick }) {
   const mapRef          = useRef(null)
   const savedViewRef    = useRef(null)
   const flybackTimerRef = useRef(null)
+  const spiderRef       = useRef(null)
   const [filterStatus,      setFilterStatus]      = useState('All')
   const [filterCriticality, setFilterCriticality] = useState('All')
   const [mapStyle, setMapStyle] = useState(() => {
@@ -5331,9 +5332,9 @@ function ClientMapPage({ clients = [], darkMode = true, onClientClick }) {
     // ── Cluster-Group ────────────────────────────────────────
     const clusterGroup = L.markerClusterGroup({
       maxClusterRadius: 48,
-      spiderfyOnMaxZoom: true,
+      spiderfyOnMaxZoom: false,
       showCoverageOnHover: false,
-      zoomToBoundsOnClick: false,
+      zoomToBoundsOnClick: true,
       iconCreateFunction: (cluster) => {
         const count  = cluster.getChildCount()
         const sz     = count >= 10 ? 46 : 38
@@ -5439,17 +5440,57 @@ function ClientMapPage({ clients = [], darkMode = true, onClientClick }) {
       </div>`
     }
 
+    const collapseSpider = () => {
+      if (!spiderRef.current) return
+      spiderRef.current.forEach(l => map.removeLayer(l))
+      spiderRef.current = null
+    }
+
+    const expandSpider = (centerLatLng, group) => {
+      collapseSpider()
+      const centerPx = map.latLngToLayerPoint(centerLatLng)
+      const radius   = 58
+      const layers   = []
+
+      group.forEach((c, i) => {
+        const angle  = (2 * Math.PI * i) / group.length - Math.PI / 2
+        const legEnd = map.layerPointToLatLng(L.point(
+          centerPx.x + radius * Math.cos(angle),
+          centerPx.y + radius * Math.sin(angle),
+        ))
+
+        // Verbindungslinie
+        const leg = L.polyline([centerLatLng, legEnd], {
+          color: '#06b6d4', weight: 1.5, opacity: 0.35, dashArray: '3,4',
+        }).addTo(map)
+
+        // Einzelner Marker
+        const col    = CRITICALITY_COLOR[c.criticality] || CRITICALITY_COLOR.LOW
+        const icon   = makeMarkerIcon(col, 1)
+        const marker = L.marker(legEnd, { icon, zIndexOffset: 1000 })
+        marker.on('click', e => L.DomEvent.stopPropagation(e))
+        marker.bindPopup(makeSinglePopup(c), popupOpts)
+        marker.addTo(map)
+
+        layers.push(leg, marker)
+      })
+
+      spiderRef.current = layers
+    }
+
     Object.values(posGroups).forEach(group => {
       const [c0] = group
       const col  = CRITICALITY_COLOR[c0.criticality] || CRITICALITY_COLOR.LOW
       const icon = makeMarkerIcon(col, group.length)
       const marker = L.marker([c0.lat, c0.lng], { icon })
-      marker.on('click', e => L.DomEvent.stopPropagation(e))
+      marker.on('click', e => {
+        L.DomEvent.stopPropagation(e)
+        if (group.length === 1) return  // normales Popup via bindPopup
+        expandSpider(marker.getLatLng(), group)
+      })
 
       if (group.length === 1) {
         marker.bindPopup(makeSinglePopup(c0), popupOpts)
-      } else {
-        marker.bindPopup(makeGroupPopup(group), popupOpts)
       }
 
       clusterGroup.addLayer(marker)
@@ -5457,7 +5498,10 @@ function ClientMapPage({ clients = [], darkMode = true, onClientClick }) {
 
     map.addLayer(clusterGroup)
 
-    map.on('click', () => map.closePopup())
+    map.on('click', () => {
+      collapseSpider()
+      map.closePopup()
+    })
 
     map.on('popupopen', (e) => {
       e.popup.getElement()?.querySelectorAll('.map-detail-btn').forEach(btn => {
@@ -5504,6 +5548,7 @@ function ClientMapPage({ clients = [], darkMode = true, onClientClick }) {
 
     return () => {
       if (flybackTimerRef.current) { clearTimeout(flybackTimerRef.current); flybackTimerRef.current = null }
+      if (spiderRef.current) { spiderRef.current.forEach(l => { try { map.removeLayer(l) } catch {} }); spiderRef.current = null }
       zoomBoxWatcher.disconnect()
       if (mapRef.current) { mapRef.current.remove(); mapRef.current = null }
     }
