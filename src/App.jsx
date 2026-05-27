@@ -809,7 +809,7 @@ function LoginPage({ onLogin, darkMode, onToggleDark, usersAuth = USERS_AUTH }) 
 
 // ─── SIDEBAR ─────────────────────────────────────────────────────────────────
 
-function Sidebar({ active, onNav, collapsed, onToggle, currentUser, onLogout, uiLang = 'en', mobileOpen = false, onMobileClose, onSettingsOpen }) {
+function Sidebar({ active, onNav, collapsed, onToggle, currentUser, onLogout, uiLang = 'en', mobileOpen = false, onMobileClose, onSettingsOpen, darkMode = true }) {
   const activeGroup = NAV_GROUPS.find(g => !g.standalone && g.items?.some(i => i.id === active))
 
   const [openGroups, setOpenGroups] = useState(() => {
@@ -844,10 +844,12 @@ function Sidebar({ active, onNav, collapsed, onToggle, currentUser, onLogout, ui
         className={`w-full flex items-center gap-3 px-3 py-2.5 rounded text-left transition-all duration-150 group
           ${isActive
             ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20'
-            : 'text-slate-500 hover:text-slate-200 hover:bg-slate-800/50 border border-transparent'
+            : darkMode
+              ? 'text-slate-500 hover:text-slate-200 hover:bg-slate-800/50 border border-transparent'
+              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100 border border-transparent'
           }`}
       >
-        <Icon size={16} className={`shrink-0 ${isActive ? 'text-cyan-400' : 'text-slate-500 group-hover:text-slate-300'}`} />
+        <Icon size={16} className={`shrink-0 ${isActive ? 'text-cyan-400' : darkMode ? 'text-slate-500 group-hover:text-slate-300' : 'text-gray-500 group-hover:text-gray-800'}`} />
         {!collapsed && <span className="text-xs font-mono font-medium tracking-wide truncate">{label}</span>}
         {!collapsed && isActive && <div className="ml-auto w-1 h-1 rounded-full bg-cyan-400 animate-pulse" />}
       </button>
@@ -861,19 +863,20 @@ function Sidebar({ active, onNav, collapsed, onToggle, currentUser, onLogout, ui
         <div className="fixed inset-0 bg-black/60 z-40 lg:hidden" onClick={onMobileClose} />
       )}
     <aside className={`
-      flex flex-col bg-[#0a0a0a] border-r border-[#1e293b] transition-all duration-300 shrink-0
+      flex flex-col border-r transition-all duration-300 shrink-0
+      ${darkMode ? 'bg-[#0a0a0a] border-[#1e293b]' : 'bg-white border-gray-200'}
       ${collapsed ? 'w-16' : 'w-56'}
       fixed lg:relative inset-y-0 left-0 z-50
       ${mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
     `}>
-      <div className="flex items-center justify-between px-4 py-5 border-b border-[#1e293b]">
+      <div className={`flex items-center justify-between px-4 py-5 border-b ${darkMode ? 'border-[#1e293b]' : 'border-gray-200'}`}>
         {!collapsed && (
           <div>
             <div className="text-xs font-mono font-bold text-cyan-400 tracking-[0.2em] text-glow">HOLYSEC</div>
-            <div className="text-[10px] font-mono text-slate-500 tracking-[0.15em]">// Leif Balthasar</div>
+            <div className={`text-[10px] font-mono tracking-[0.15em] ${darkMode ? 'text-slate-500' : 'text-gray-400'}`}>// Leif Balthasar</div>
           </div>
         )}
-        <button onClick={onToggle} className="p-1 rounded text-slate-500 hover:text-cyan-400 transition-colors ml-auto">
+        <button onClick={onToggle} className={`p-1 rounded hover:text-cyan-400 transition-colors ml-auto ${darkMode ? 'text-slate-500' : 'text-gray-400'}`}>
           {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
         </button>
       </div>
@@ -898,7 +901,7 @@ function Sidebar({ active, onNav, collapsed, onToggle, currentUser, onLogout, ui
               <button
                 onClick={() => toggleGroup(group.id)}
                 className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded transition-all duration-150
-                  ${isGroupActive ? 'text-cyan-400/80' : 'text-slate-600 hover:text-slate-400'}`}
+                  ${isGroupActive ? 'text-cyan-400/80' : darkMode ? 'text-slate-600 hover:text-slate-400' : 'text-gray-600 hover:text-gray-800'}`}
               >
                 <GroupIcon size={15} className="shrink-0" />
                 <span className="text-xs font-mono font-bold uppercase tracking-widest flex-1 text-left">
@@ -911,7 +914,7 @@ function Sidebar({ active, onNav, collapsed, onToggle, currentUser, onLogout, ui
               </button>
 
               {isOpen && (
-                <div className="ml-2 mt-0.5 mb-1 pl-2.5 border-l border-[#1e293b] space-y-0.5">
+                <div className={`ml-2 mt-0.5 mb-1 pl-2.5 border-l space-y-0.5 ${darkMode ? 'border-[#1e293b]' : 'border-gray-200'}`}>
                   {visibleItems.map(renderItem)}
                 </div>
               )}
@@ -920,15 +923,15 @@ function Sidebar({ active, onNav, collapsed, onToggle, currentUser, onLogout, ui
         })}
       </nav>
 
-      <div className="px-3 py-3 border-t border-[#1e293b]">
+      <div className={`px-3 py-3 border-t ${darkMode ? 'border-[#1e293b]' : 'border-gray-200'}`}>
         {collapsed ? (
           <div className="flex flex-col items-center gap-1">
             <button onClick={onSettingsOpen} title="Einstellungen"
-              className="w-full flex justify-center p-2 rounded text-slate-600 hover:text-cyan-400 hover:bg-cyan-500/10 transition-all">
+              className={`w-full flex justify-center p-2 rounded hover:text-cyan-400 hover:bg-cyan-500/10 transition-all ${darkMode ? 'text-slate-600' : 'text-gray-500'}`}>
               <Settings size={14} />
             </button>
             <button onClick={onLogout} title="Logout"
-              className="w-full flex justify-center p-2 rounded text-slate-700 hover:text-red-400 hover:bg-red-400/10 transition-all">
+              className={`w-full flex justify-center p-2 rounded hover:text-red-400 hover:bg-red-400/10 transition-all ${darkMode ? 'text-slate-700' : 'text-gray-500'}`}>
               <LogOut size={14} />
             </button>
           </div>
@@ -936,18 +939,18 @@ function Sidebar({ active, onNav, collapsed, onToggle, currentUser, onLogout, ui
           <div className="space-y-1">
             <button
               onClick={onSettingsOpen}
-              className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded hover:bg-slate-800/50 transition-all group"
+              className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded transition-all group ${darkMode ? 'hover:bg-slate-800/50' : 'hover:bg-gray-100'}`}
               title="Einstellungen öffnen"
             >
               <MemberAvatar member={currentUser} size="md" />
               <div className="flex-1 min-w-0 text-left">
-                <div className="text-xs font-mono text-slate-300 truncate group-hover:text-slate-100 transition-colors">{currentUser.name}</div>
-                <div className="text-[10px] font-mono text-slate-600">{currentUser.role}</div>
+                <div className={`text-xs font-mono truncate transition-colors ${darkMode ? 'text-slate-300 group-hover:text-slate-100' : 'text-gray-700 group-hover:text-gray-900'}`}>{currentUser.name}</div>
+                <div className={`text-[10px] font-mono ${darkMode ? 'text-slate-600' : 'text-gray-400'}`}>{currentUser.role}</div>
               </div>
-              <Settings size={12} className="shrink-0 text-slate-700 group-hover:text-cyan-400 transition-colors" />
+              <Settings size={12} className={`shrink-0 transition-colors group-hover:text-cyan-400 ${darkMode ? 'text-slate-700' : 'text-gray-400'}`} />
             </button>
             <button onClick={onLogout}
-              className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-slate-700 hover:text-red-400 hover:bg-red-400/10 transition-all text-[10px] font-mono">
+              className={`w-full flex items-center gap-2 px-2 py-1.5 rounded hover:text-red-400 hover:bg-red-400/10 transition-all text-[10px] font-mono ${darkMode ? 'text-slate-700' : 'text-gray-500'}`}>
               <LogOut size={11} /> Abmelden
             </button>
           </div>
@@ -3448,7 +3451,7 @@ function ReportingCenter({ reports, onStatusChange, onAdd, currentUser, assignme
 
 function AboutHolySec() {
   return (
-    <div className="p-6 max-w-4xl space-y-6">
+    <div className="p-6 space-y-6">
       {/* Hero */}
       <Panel className="p-8 relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 via-transparent to-transparent pointer-events-none" />
@@ -3878,7 +3881,7 @@ function TimeTrackingPage({ timeEntries, currentUser, members, uiLang = 'en' }) 
   }, [exportMemberId, members, timeEntries, exportRangeStart])
 
   return (
-    <div className="p-3 lg:p-6 max-w-5xl space-y-5">
+    <div className="p-3 lg:p-6 space-y-5">
       <TimeTrackingSection entries={timeEntries} currentUser={currentUser} members={members} uiLang={uiLang} />
       <Panel>
         <PanelHeader title="PDF Export" subtitle="Zeiterfassung eines Mitarbeiters oder aller Mitarbeiter ausgeben" />
@@ -6199,6 +6202,7 @@ export default function App() {
         currentUser={currentUser} onLogout={handleLogout} uiLang={uiLang}
         mobileOpen={mobileMenuOpen} onMobileClose={() => setMobileMenuOpen(false)}
         onSettingsOpen={() => handleNav('settings')}
+        darkMode={darkMode}
       />
 
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
@@ -6230,7 +6234,7 @@ export default function App() {
           {page === 'reports'          && <ReportingCenter reports={reports} onStatusChange={handleReportStatusChange} onAdd={handleAddReport} currentUser={currentUser} assignments={assignments} onAuditLog={handleAuditLogDownload} tipsLang={tipsLang} clients={clients} engagements={allEngagements} findings={allFindings} />}
           {page === 'team'             && <TeamPage members={teamMembers} currentUser={currentUser} onAdd={handleAddMember} onRemove={handleRemoveMember} assignments={assignments} engagements={allEngagements} userPresence={userPresence} timeEntries={timeEntries} onAuditLog={handleAuditLogDownload} uiLang={uiLang} />}
           {page === 'user-management'  && currentUser?.role === 'Admin' && (
-            <div className="p-3 lg:p-6 max-w-5xl">
+            <div className="p-3 lg:p-6">
               <UserManagementSection members={teamMembers} currentUser={currentUser} onAdd={handleAddMember} onRemove={handleRemoveMember} onEdit={handleEditMember} />
             </div>
           )}
