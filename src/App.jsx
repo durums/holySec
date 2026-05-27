@@ -1470,7 +1470,7 @@ function ClientList({ clients: allClients = [], engagements: allEngagements = []
           </div>
           {['All', 'Active', 'Pending', 'Completed', 'On Hold'].map(s => (
             <button key={s} onClick={() => setFilterStatus(s)}
-              className={`px-3 py-1.5 rounded text-xs font-mono border transition-all ${filterStatus === s ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-400' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
+              className={`px-3 py-1.5 rounded text-xs font-mono border transition-all ${filterStatus === s ? 'border-slate-500/50 bg-slate-700/40 text-slate-300' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
               {s}
             </button>
           ))}
@@ -2302,7 +2302,7 @@ function FindingsTracker({ currentUser, assignments, findings: allFindingsProp =
             <Filter size={12} className="text-slate-600" />
             {['All', 'CRITICAL', 'HIGH', 'MEDIUM', 'LOW'].map(s => (
               <button key={s} onClick={() => setSeverityFilter(s)}
-                className={`px-2.5 py-1 rounded text-[10px] font-mono border transition-all ${severityFilter === s ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-400' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
+                className={`px-2.5 py-1 rounded text-[10px] font-mono border transition-all ${severityFilter === s ? 'border-slate-500/50 bg-slate-700/40 text-slate-300' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
                 {s}
               </button>
             ))}
@@ -2311,7 +2311,7 @@ function FindingsTracker({ currentUser, assignments, findings: allFindingsProp =
           <div className="flex items-center gap-1 flex-wrap">
             {['All', 'Open', 'In Remediation', 'Closed'].map(s => (
               <button key={s} onClick={() => setStatusFilter(s)}
-                className={`px-2.5 py-1 rounded text-[10px] font-mono border transition-all ${statusFilter === s ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-400' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
+                className={`px-2.5 py-1 rounded text-[10px] font-mono border transition-all ${statusFilter === s ? 'border-slate-500/50 bg-slate-700/40 text-slate-300' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
                 {s}
               </button>
             ))}
@@ -2822,7 +2822,7 @@ function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, curre
           <div className="flex gap-1">
             {['timeline', 'list'].map(v => (
               <button key={v} onClick={() => setView(v)}
-                className={`px-3 py-1.5 rounded text-xs font-mono capitalize border transition-all ${view === v ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-400' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
+                className={`px-3 py-1.5 rounded text-xs font-mono capitalize border transition-all ${view === v ? 'border-slate-500/50 bg-slate-700/40 text-slate-300' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
                 {v}
               </button>
             ))}
@@ -2841,7 +2841,7 @@ function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, curre
           </button>
           {['All', 'Active', 'Planned', 'Completed', 'On Hold'].map(s => (
             <button key={s} onClick={() => setStatusFilter(s)}
-              className={`px-2.5 py-1 rounded text-[10px] font-mono border transition-all ${statusFilter === s ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-400' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
+              className={`px-2.5 py-1 rounded text-[10px] font-mono border transition-all ${statusFilter === s ? 'border-slate-500/50 bg-slate-700/40 text-slate-300' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
               {s}
             </button>
           ))}
@@ -3452,7 +3452,7 @@ function ReportingCenter({ reports, onStatusChange, onAdd, currentUser, assignme
         <div className="flex gap-1 flex-wrap">
           {['All', 'Technical Report', 'Executive Summary', 'Remediation Plan'].map(t => (
             <button key={t} onClick={() => setFilterType(t)}
-              className={`px-2.5 py-1 rounded text-[10px] font-mono border transition-all ${filterType === t ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-400' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
+              className={`px-2.5 py-1 rounded text-[10px] font-mono border transition-all ${filterType === t ? 'border-slate-500/50 bg-slate-700/40 text-slate-300' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
               {t}
             </button>
           ))}
@@ -3716,7 +3716,7 @@ function UserManagementSection({ members, currentUser, onAdd, onRemove, onEdit }
               <span className="text-[10px] font-mono text-slate-600">Sortieren:</span>
               {[['name', 'Name'], ['role', 'Rolle'], ['email', 'E-Mail']].map(([k, label]) => (
                 <button key={k} onClick={() => setSortBy(k)}
-                  className={`px-2 py-1 rounded text-[10px] font-mono border transition-all ${sortBy === k ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-400' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
+                  className={`px-2 py-1 rounded text-[10px] font-mono border transition-all ${sortBy === k ? 'border-slate-500/50 bg-slate-700/40 text-slate-300' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
                   {label}
                 </button>
               ))}
@@ -3725,7 +3725,7 @@ function UserManagementSection({ members, currentUser, onAdd, onRemove, onEdit }
           <div className="flex gap-1 flex-wrap">
             {['All', 'Admin', 'Senior Pentester', 'Pentester', 'Junior Pentester'].map(r => (
               <button key={r} onClick={() => setFilterRole(r)}
-                className={`px-2 py-1 rounded text-[10px] font-mono border transition-all ${filterRole === r ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-400' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
+                className={`px-2 py-1 rounded text-[10px] font-mono border transition-all ${filterRole === r ? 'border-slate-500/50 bg-slate-700/40 text-slate-300' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
                 {r === 'All' ? 'Alle' : r}
               </button>
             ))}
@@ -3868,7 +3868,7 @@ function TimeTrackingSection({ entries, currentUser, members, uiLang = 'en' }) {
         <div className="flex items-center gap-2">
           {['week','month'].map(r => (
             <button key={r} onClick={() => setRange(r)}
-              className={`px-3 py-1.5 rounded text-xs font-mono border transition-all ${range === r ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-400' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
+              className={`px-3 py-1.5 rounded text-xs font-mono border transition-all ${range === r ? 'border-slate-500/50 bg-slate-700/40 text-slate-300' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
               {r === 'week' ? 'Diese Woche' : 'Dieser Monat'}
             </button>
           ))}
@@ -4868,7 +4868,7 @@ function TeamPage({ members, currentUser, onAdd, onRemove, assignments, engageme
           <div className="flex items-center gap-1 flex-wrap mr-1">
             {['All', 'Admin', 'Senior Pentester', 'Pentester', 'Junior Pentester'].map(r => (
               <button key={r} onClick={() => setRoleFilter(r)}
-                className={`px-2.5 py-1 rounded text-[10px] font-mono border transition-all ${roleFilter === r ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-400' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
+                className={`px-2.5 py-1 rounded text-[10px] font-mono border transition-all ${roleFilter === r ? 'border-slate-500/50 bg-slate-700/40 text-slate-300' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
                 {r}
               </button>
             ))}
@@ -5486,8 +5486,8 @@ function ClientMapPage({ clients = [], darkMode = true, onClientClick }) {
     ? 'border-[#1e293b] text-slate-500 hover:text-slate-300 hover:border-slate-600'
     : 'border-gray-200 text-gray-500 hover:text-gray-700 hover:border-gray-400'
   const chipActive = darkMode
-    ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-400'
-    : 'border-cyan-600/60 bg-cyan-50 text-cyan-700'
+    ? 'border-slate-500/50 bg-slate-700/40 text-slate-300'
+    : 'border-slate-400/60 bg-slate-100 text-slate-700'
   const panelCls   = darkMode ? 'bg-[#0f172a] border-[#1e293b]' : 'bg-white border-gray-200'
   const borderCls  = darkMode ? 'border-[#1e293b]' : 'border-gray-200'
   const dividerCls = darkMode ? 'bg-[#1e293b]'     : 'bg-gray-200'
@@ -5773,7 +5773,7 @@ function AuditLogPage({ logs = [], teamMembers = [], onClear, tipsLang = 'de' })
           <div className="flex gap-1 flex-wrap">
             {['All', ...Object.keys(LOG_CAT)].map(c => (
               <button key={c} onClick={() => setCatFilter(c)}
-                className={`px-2 py-1 rounded text-[10px] font-mono border transition-all ${catFilter === c ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-400' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
+                className={`px-2 py-1 rounded text-[10px] font-mono border transition-all ${catFilter === c ? 'border-slate-500/50 bg-slate-700/40 text-slate-300' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
                 {c === 'All' ? 'Alle' : LOG_CAT[c].label}
               </button>
             ))}
