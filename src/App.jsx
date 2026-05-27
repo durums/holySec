@@ -5133,12 +5133,12 @@ const CRITICALITY_COLOR = {
 
 const MAP_TILE_STYLES = {
   dark: [
-    { id: 'toner',              label: 'Toner',              url: 'https://tiles.stadiamaps.com/tiles/stamen_toner/{z}/{x}/{y}{r}.png',        subdomains: '', attribution: '&copy; Stadia Maps &copy; OpenMapTiles &copy; OpenStreetMap' },
-    { id: 'alidade_smooth_dark',label: 'Alidade Smooth Dark',url: 'https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png', subdomains: '', attribution: '&copy; Stadia Maps &copy; OpenMapTiles &copy; OpenStreetMap' },
+    { id: 'dark_matter',  label: 'Dark Matter',  url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',       subdomains: 'abcd', attribution: '&copy; <a href="https://carto.com/">CARTO</a> &copy; OpenStreetMap' },
+    { id: 'dark_minimal', label: 'Dark Minimal', url: 'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png',  subdomains: 'abcd', attribution: '&copy; <a href="https://carto.com/">CARTO</a> &copy; OpenStreetMap' },
   ],
   light: [
-    { id: 'carto',      label: 'Carto Light', url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',          subdomains: 'abcd', attribution: '&copy; CARTO' },
-    { id: 'toner_lite', label: 'Toner Lite',  url: 'https://tiles.stadiamaps.com/tiles/stamen_toner_lite/{z}/{x}/{y}{r}.png', subdomains: '',     attribution: '&copy; Stadia Maps' },
+    { id: 'carto',        label: 'Carto Light',  url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',      subdomains: 'abcd', attribution: '&copy; <a href="https://carto.com/">CARTO</a> &copy; OpenStreetMap' },
+    { id: 'carto_minimal',label: 'Light Minimal', url: 'https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png',subdomains: 'abcd', attribution: '&copy; <a href="https://carto.com/">CARTO</a> &copy; OpenStreetMap' },
   ],
 }
 
