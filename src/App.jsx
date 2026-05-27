@@ -5138,7 +5138,7 @@ const MAP_TILE_STYLES = {
   ],
   light: [
     { id: 'carto',        label: 'Carto Light',  url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',      subdomains: 'abcd', attribution: '&copy; <a href="https://carto.com/">CARTO</a> &copy; OpenStreetMap' },
-    { id: 'carto_minimal',label: 'Light Minimal', url: 'https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png',subdomains: 'abcd', attribution: '&copy; <a href="https://carto.com/">CARTO</a> &copy; OpenStreetMap' },
+    { id: 'esri_imagery', label: 'Satellite',      url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',              subdomains: '', attribution: '&copy; Esri, Maxar, Earthstar Geographics' },
   ],
 }
 
@@ -5364,8 +5364,8 @@ function ClientMapPage({ clients = [], darkMode = true, onClientClick }) {
       }
       const latlng = e.popup.getLatLng()
       if (latlng) {
-        const targetZoom = Math.min(map.getZoom() + 2, 10)
-        map.flyTo(latlng, targetZoom, { duration: 0.5 })
+        const targetZoom = Math.max(map.getZoom(), Math.min(map.getZoom() + 2, 12))
+        map.flyTo(latlng, targetZoom, { duration: 0.4 })
       }
     })
 
