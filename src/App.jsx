@@ -843,7 +843,7 @@ function Sidebar({ active, onNav, collapsed, onToggle, currentUser, onLogout, ui
         title={collapsed ? label : undefined}
         className={`w-full flex items-center gap-3 px-3 py-2.5 rounded text-left transition-all duration-150 group
           ${isActive
-            ? 'bg-cyan-500/15 text-white border-l-2 border-l-cyan-400 border-t border-r border-b border-t-cyan-500/10 border-r-cyan-500/10 border-b-cyan-500/10'
+            ? 'bg-cyan-500/10 text-slate-300 border-l-2 border-l-cyan-400 border-t border-r border-b border-t-cyan-500/10 border-r-cyan-500/10 border-b-cyan-500/10'
             : darkMode
               ? 'text-slate-500 hover:text-slate-200 hover:bg-slate-800/50 border border-transparent'
               : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100 border border-transparent'
