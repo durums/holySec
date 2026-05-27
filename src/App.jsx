@@ -843,7 +843,7 @@ function Sidebar({ active, onNav, collapsed, onToggle, currentUser, onLogout, ui
         title={collapsed ? label : undefined}
         className={`w-full flex items-center gap-3 px-3 py-2.5 rounded text-left transition-all duration-150 group
           ${isActive
-            ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20'
+            ? 'bg-cyan-500/15 text-white border-l-2 border-l-cyan-400 border-t border-r border-b border-t-cyan-500/10 border-r-cyan-500/10 border-b-cyan-500/10'
             : darkMode
               ? 'text-slate-500 hover:text-slate-200 hover:bg-slate-800/50 border border-transparent'
               : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100 border border-transparent'
@@ -3451,7 +3451,7 @@ function ReportingCenter({ reports, onStatusChange, onAdd, currentUser, assignme
 
 function AboutHolySec() {
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 max-w-7xl mx-auto w-full space-y-6">
       {/* Hero */}
       <Panel className="p-8 relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 via-transparent to-transparent pointer-events-none" />
@@ -3881,7 +3881,7 @@ function TimeTrackingPage({ timeEntries, currentUser, members, uiLang = 'en' }) 
   }, [exportMemberId, members, timeEntries, exportRangeStart])
 
   return (
-    <div className="p-3 lg:p-6 space-y-5">
+    <div className="p-3 lg:p-6 max-w-7xl mx-auto w-full space-y-5">
       <TimeTrackingSection entries={timeEntries} currentUser={currentUser} members={members} uiLang={uiLang} />
       <Panel>
         <PanelHeader title="PDF Export" subtitle="Zeiterfassung eines Mitarbeiters oder aller Mitarbeiter ausgeben" />
@@ -6234,7 +6234,7 @@ export default function App() {
           {page === 'reports'          && <ReportingCenter reports={reports} onStatusChange={handleReportStatusChange} onAdd={handleAddReport} currentUser={currentUser} assignments={assignments} onAuditLog={handleAuditLogDownload} tipsLang={tipsLang} clients={clients} engagements={allEngagements} findings={allFindings} />}
           {page === 'team'             && <TeamPage members={teamMembers} currentUser={currentUser} onAdd={handleAddMember} onRemove={handleRemoveMember} assignments={assignments} engagements={allEngagements} userPresence={userPresence} timeEntries={timeEntries} onAuditLog={handleAuditLogDownload} uiLang={uiLang} />}
           {page === 'user-management'  && currentUser?.role === 'Admin' && (
-            <div className="p-3 lg:p-6">
+            <div className="p-3 lg:p-6 max-w-7xl mx-auto w-full">
               <UserManagementSection members={teamMembers} currentUser={currentUser} onAdd={handleAddMember} onRemove={handleRemoveMember} onEdit={handleEditMember} />
             </div>
           )}
