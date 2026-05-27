@@ -5811,11 +5811,8 @@ export default function App() {
 
   useEffect(() => { currentUserRef.current = currentUser }, [currentUser])
 
-  useEffect(() => {
-    fetch('https://api.ipify.org?format=json')
-      .then(r => r.json()).then(d => { sessionIpRef.current = d.ip })
-      .catch(() => { sessionIpRef.current = window.location.hostname || 'lokal' })
-  }, [])
+  // IP wird serverseitig aus req.ip gelesen — kein externer Dienst nötig
+  useEffect(() => { sessionIpRef.current = 'server' }, [])
 
   // Session-Wiederherstellung: prüft beim Laden ob ein gültiger Cookie existiert
   useEffect(() => {
