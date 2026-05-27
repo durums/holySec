@@ -204,7 +204,7 @@ function fmtDate(dateStr, lang) {
   return `${d}.${m}.${y}`
 }
 
-function getMyScope(currentUser, assignments, allClients = CLIENTS, allEngagements = ENGAGEMENTS, allFindings = FINDINGS) {
+function getMyScope(currentUser, assignments, allClients = [], allEngagements = [], allFindings = []) {
   if (!currentUser || currentUser.role === 'Admin') {
     return { clients: allClients, findings: allFindings, engagements: allEngagements }
   }
@@ -960,7 +960,7 @@ function Sidebar({ active, onNav, collapsed, onToggle, currentUser, onLogout, ui
 
 // ─── TOPBAR ──────────────────────────────────────────────────────────────────
 
-function TopBar({ title, subtitle, currentUser, assignments, clients: allClients = CLIENTS, engagements: allEngagements = ENGAGEMENTS, findings: allFindings = FINDINGS, activeTimer, onClockIn, onClockOut, userPresence, onPresenceChange, darkMode, onToggleDark, reminders = [], onMobileMenuToggle }) {
+function TopBar({ title, subtitle, currentUser, assignments, clients: allClients = [], engagements: allEngagements = [], findings: allFindings = [], activeTimer, onClockIn, onClockOut, userPresence, onPresenceChange, darkMode, onToggleDark, reminders = [], onMobileMenuToggle }) {
   const [showNotifs, setShowNotifs] = useState(false)
   const [showPresence, setShowPresence] = useState(false)
   const [readNotifs, setReadNotifs] = useState(() => {
@@ -1161,7 +1161,7 @@ function DashboardPieTooltip({ active, payload }) {
   )
 }
 
-function Dashboard({ onClientClick, clients: allClients = CLIENTS, currentUser, assignments = {}, findings: allFindingsProp = FINDINGS, engagements: allEngProp = ENGAGEMENTS, onNav, tipsLang = 'de' }) {
+function Dashboard({ onClientClick, clients: allClients = [], currentUser, assignments = {}, findings: allFindingsProp = [], engagements: allEngProp = [], onNav, tipsLang = 'de' }) {
   const { clients: scopedClients } = useMemo(
     () => getMyScope(currentUser, assignments, allClients, allEngProp, allFindingsProp),
     [currentUser, assignments, allClients, allEngProp, allFindingsProp]
@@ -1423,7 +1423,7 @@ function ClientModal({ client, onSave, onClose }) {
 
 // ─── CLIENT LIST ─────────────────────────────────────────────────────────────
 
-function ClientList({ clients: allClients = CLIENTS, engagements: allEngagements = [], onClientClick, currentUser, assignments, onAdd, onEdit, onDelete, defaultStatus = 'All', tipsLang = 'de' }) {
+function ClientList({ clients: allClients = [], engagements: allEngagements = [], reports: allReports = [], onClientClick, currentUser, assignments, onAdd, onEdit, onDelete, defaultStatus = 'All', tipsLang = 'de' }) {
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState(defaultStatus)
   const [showModal, setShowModal] = useState(false)
@@ -1498,7 +1498,7 @@ function ClientList({ clients: allClients = CLIENTS, engagements: allEngagements
           <tbody className="divide-y divide-[#1e293b]">
             {filtered.map(client => {
               const pct = Math.round((client.contract.used / client.contract.hours) * 100)
-              const clientReports = REPORTS.filter(r => r.clientId === client.id)
+              const clientReports = allReports.filter(r => r.clientId === client.id)
               const trCount  = clientReports.filter(r => r.type === 'Technical Report').length
               const esCount  = clientReports.filter(r => r.type === 'Executive Summary').length
               const rpCount  = clientReports.filter(r => r.type === 'Remediation Plan').length
@@ -1610,7 +1610,7 @@ function ClientList({ clients: allClients = CLIENTS, engagements: allEngagements
 
 // ─── CLIENT DETAIL ────────────────────────────────────────────────────────────
 
-function ClientDetail({ clientId, onBack, clients: allClients = CLIENTS, findings: allFindings = FINDINGS, engagements: allEngagements = ENGAGEMENTS, reports: allReports = REPORTS, tipsLang = 'de', uiLang = 'en', onNav }) {
+function ClientDetail({ clientId, onBack, clients: allClients = [], findings: allFindings = [], engagements: allEngagements = [], reports: allReports = [], tipsLang = 'de', uiLang = 'en', onNav }) {
   const [tab, setTab] = useState('overview')
   const client = allClients.find(c => c.id === clientId)
   if (!client) return null
@@ -1880,7 +1880,7 @@ function cvssToSeverity(score) {
   return 'LOW'
 }
 
-function NewFindingModal({ clients = CLIENTS, currentUser, onSave, onClose, editFinding = null }) {
+function NewFindingModal({ clients = [], currentUser, onSave, onClose, editFinding = null }) {
   const today = new Date().toISOString().split('T')[0]
   const [form, setForm] = useState(editFinding ? {
     title: editFinding.title,
@@ -2142,7 +2142,7 @@ function ReminderModal({ finding, engagement, teamMembers, currentUser, onSend, 
 
 // ─── FINDINGS TRACKER ────────────────────────────────────────────────────────
 
-function FindingsTracker({ currentUser, assignments, findings: allFindingsProp = FINDINGS, onAddFinding, onEditFinding, onDeleteFinding, clients: allClientsProp = CLIENTS, teamMembers = [], engagements = [], onSendReminder, defaultSeverity = 'All', defaultStatus = 'All', defaultClientId = 'All', defaultFindingId = null, tipsLang = 'de' }) {
+function FindingsTracker({ currentUser, assignments, findings: allFindingsProp = [], onAddFinding, onEditFinding, onDeleteFinding, clients: allClientsProp = [], teamMembers = [], engagements = [], onSendReminder, defaultSeverity = 'All', defaultStatus = 'All', defaultClientId = 'All', defaultFindingId = null, tipsLang = 'de' }) {
   const { findings: scopeFindings, clients: scopeClients } = useMemo(
     () => getMyScope(currentUser, assignments, allClientsProp, engagements, allFindingsProp),
     [currentUser, assignments, allClientsProp, engagements, allFindingsProp]
@@ -2471,7 +2471,7 @@ const TYPE_COLORS = {
 
 // ─── NEW ENGAGEMENT MODAL ─────────────────────────────────────────────────────
 
-function NewEngagementModal({ clients = CLIENTS, currentUser, onSave, onClose, existing = null }) {
+function NewEngagementModal({ clients = [], currentUser, onSave, onClose, existing = null }) {
   const [form, setForm] = useState(existing ? { ...existing } : {
     title: '',
     clientId: clients[0]?.id || '',
@@ -2687,7 +2687,7 @@ function PhaseDetailModal({ engagement, phase, onSave, onClose, canEdit }) {
   )
 }
 
-function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, currentUser, groups = [], engagements: allEngProp = ENGAGEMENTS, onAddEngagement, onStatusChange, onEdit, onDelete, clients: allClientsProp = CLIENTS, defaultStatus = 'All', defaultClientId = null, tipsLang = 'de', uiLang = 'en', pendingReports = {}, onEngDetail }) {
+function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, currentUser, groups = [], engagements: allEngProp = [], onAddEngagement, onStatusChange, onEdit, onDelete, clients: allClientsProp = [], defaultStatus = 'All', defaultClientId = null, tipsLang = 'de', uiLang = 'en', pendingReports = {}, onEngDetail }) {
   const ENG_STATUS_CYCLE = { Planned: 'Active', Active: 'On Hold', 'On Hold': 'Completed', Completed: 'Planned' }
   const canCycleStatus = currentUser?.role === 'Admin' || currentUser?.role === 'Senior Pentester'
   const isAdmin = currentUser?.role === 'Admin'
@@ -2915,6 +2915,7 @@ function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, curre
           onSave={onAssign}
           onClose={() => setAssignModal(null)}
           groups={groups}
+          clients={allClientsProp}
         />
       )}
 
@@ -3037,7 +3038,7 @@ function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, curre
 
 // ─── CLIENT RADAR ────────────────────────────────────────────────────────────
 
-function ClientRadar({ onClientClick, currentUser, assignments, clients: allClients = CLIENTS, tipsLang = 'de' }) {
+function ClientRadar({ onClientClick, currentUser, assignments, clients: allClients = [], tipsLang = 'de' }) {
   const [radarFilter, setRadarFilter] = useState('All')
   const { clients: scopeClients } = useMemo(
     () => getMyScope(currentUser, assignments, allClients),
@@ -4221,9 +4222,9 @@ function AddEditMemberModal({ member = null, onAdd, onEdit, onClose }) {
   )
 }
 
-function AssignTeamModal({ engagement, teamMembers, assigned, onSave, onClose, groups = [] }) {
+function AssignTeamModal({ engagement, teamMembers, assigned, onSave, onClose, groups = [], clients = [] }) {
   const [selected, setSelected] = useState(new Set(assigned))
-  const client = CLIENTS.find(c => c.id === engagement.clientId)
+  const client = clients.find(c => c.id === engagement.clientId)
 
   const toggle = (id) => setSelected(prev => {
     const next = new Set(prev)
@@ -4376,7 +4377,7 @@ function downloadReportTemplate(engagement, client) {
   doc.save(`holysec_template_${(engagement?.title || 'report').replace(/\s+/g, '_')}.pdf`)
 }
 
-function EngagementDetail({ engagementId, onBack, clients: allClients = CLIENTS, teamMembers = [], assignments = {}, engagements: allEngagements = ENGAGEMENTS, pendingReports = {}, onSetPendingReport, currentUser, onEdit, onDelete, uiLang = 'en' }) {
+function EngagementDetail({ engagementId, onBack, clients: allClients = [], teamMembers = [], assignments = {}, engagements: allEngagements = [], pendingReports = {}, onSetPendingReport, currentUser, onEdit, onDelete, uiLang = 'en' }) {
   const engagement = allEngagements.find(e => e.id === engagementId)
   const client = allClients.find(c => c.id === engagement?.clientId)
   const assignedMembers = (assignments[engagementId] || []).map(uid => teamMembers.find(t => t.id === uid)).filter(Boolean)
@@ -5143,7 +5144,7 @@ const MAP_TILE_STYLES = {
 
 const MAP_STYLE_LS_KEY = 'holysec_map_style'
 
-function ClientMapPage({ clients = CLIENTS, darkMode = true, onClientClick }) {
+function ClientMapPage({ clients = [], darkMode = true, onClientClick }) {
   const mapDivRef       = useRef(null)
   const mapRef          = useRef(null)
   const savedViewRef    = useRef(null)
@@ -5816,43 +5817,46 @@ export default function App() {
       .catch(() => { sessionIpRef.current = window.location.hostname || 'lokal' })
   }, [])
 
-  // Boot: alle Daten vom Backend laden, bei leerem DB einmalig seeden
+  // Session-Wiederherstellung: prüft beim Laden ob ein gültiger Cookie existiert
   useEffect(() => {
-    Promise.all([
-      apiGetClients(), apiGetFindings(), apiGetEngagements(), apiGetReports(),
-      apiGetUsers(), apiGetTimeEntries(), apiGetEngGroups(), apiGetAuditLogs(),
-    ]).then(([c, f, e, r, u, t, g, a]) => {
-      const isEmpty = !c || c.length === 0
-      if (isEmpty) {
-        // Einmaliger Seed der Demo-Daten
-        fetch('/api/seed', { method: 'POST', credentials: 'include' }).then(() =>
-          Promise.all([
-            apiGetClients(), apiGetFindings(), apiGetEngagements(), apiGetReports(),
-            apiGetUsers(), apiGetTimeEntries(), apiGetEngGroups(), apiGetAuditLogs(),
-          ]).then(([c2, f2, e2, r2, u2, t2, g2, a2]) => {
-            if (c2) setClients(c2)
-            if (f2) setCustomFindings(f2)
-            if (e2) { setCustomEngagements(e2); setAssignments(Object.fromEntries(e2.map(x => [x.id, x.assignedTo || []]))) }
-            if (r2) setReports(r2)
-            if (u2) setTeamMembers(u2)
-            if (t2) setTimeEntries(t2)
-            if (g2) setEngagementGroups(g2)
-            if (a2) setAuditLogs(a2)
-            apiLoadedRef.current = true
-          })
-        )
-      } else {
-        if (c) setClients(c)
-        if (f) setCustomFindings(f)
-        if (e) { setCustomEngagements(e); setAssignments(Object.fromEntries(e.map(x => [x.id, x.assignedTo || []]))) }
-        if (r) setReports(r)
-        if (u) setTeamMembers(u)
-        if (t) setTimeEntries(t)
-        if (g) setEngagementGroups(g)
-        if (a) setAuditLogs(a)
-        apiLoadedRef.current = true
-      }
-    }).catch(() => { apiLoadedRef.current = true })
+    apiMe().then(me => {
+      if (!me) return
+      setCurrentUser(me)
+      Promise.all([
+        apiGetClients(), apiGetFindings(), apiGetEngagements(), apiGetReports(),
+        apiGetUsers(), apiGetTimeEntries(), apiGetEngGroups(), apiGetAuditLogs(),
+      ]).then(([c, f, e, r, u, t, g, a]) => {
+        const isEmpty = !c || c.length === 0
+        if (isEmpty) {
+          fetch('/api/seed', { method: 'POST', credentials: 'include' }).then(() =>
+            Promise.all([
+              apiGetClients(), apiGetFindings(), apiGetEngagements(), apiGetReports(),
+              apiGetUsers(), apiGetTimeEntries(), apiGetEngGroups(), apiGetAuditLogs(),
+            ]).then(([c2, f2, e2, r2, u2, t2, g2, a2]) => {
+              if (c2) setClients(c2)
+              if (f2) setCustomFindings(f2)
+              if (e2) { setCustomEngagements(e2); setAssignments(Object.fromEntries(e2.map(x => [x.id, x.assignedTo || []]))) }
+              if (r2) setReports(r2)
+              if (u2) setTeamMembers(u2)
+              if (t2) setTimeEntries(t2)
+              if (g2) setEngagementGroups(g2)
+              if (a2) setAuditLogs(a2)
+              apiLoadedRef.current = true
+            })
+          )
+        } else {
+          if (c) setClients(c)
+          if (f) setCustomFindings(f)
+          if (e) { setCustomEngagements(e); setAssignments(Object.fromEntries(e.map(x => [x.id, x.assignedTo || []]))) }
+          if (r) setReports(r)
+          if (u) setTeamMembers(u)
+          if (t) setTimeEntries(t)
+          if (g) setEngagementGroups(g)
+          if (a) setAuditLogs(a)
+          apiLoadedRef.current = true
+        }
+      })
+    }).catch(() => {})
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
 
@@ -6198,7 +6202,7 @@ export default function App() {
         <main className={`flex-1 relative ${page === 'map' ? 'overflow-hidden' : 'overflow-y-auto overflow-x-hidden'}`}>
           {page === 'dashboard'        && <Dashboard onClientClick={handleClientClick} clients={clients} currentUser={currentUser} assignments={assignments} findings={allFindings} engagements={allEngagements} onNav={handleNav} tipsLang={tipsLang} />}
           {page === 'client-radar'     && <ClientRadar onClientClick={handleClientClick} currentUser={currentUser} assignments={assignments} clients={clients} tipsLang={tipsLang} />}
-          {page === 'client-manager'   && <ClientList clients={clients} engagements={allEngagements} onClientClick={handleClientClick} currentUser={currentUser} assignments={assignments} onAdd={handleAddClient} onEdit={handleEditClient} onDelete={handleDeleteClient} defaultStatus={pageOpts.status} tipsLang={tipsLang} />}
+          {page === 'client-manager'   && <ClientList clients={clients} engagements={allEngagements} reports={reports} onClientClick={handleClientClick} currentUser={currentUser} assignments={assignments} onAdd={handleAddClient} onEdit={handleEditClient} onDelete={handleDeleteClient} defaultStatus={pageOpts.status} tipsLang={tipsLang} />}
           {/* Karte immer gemountet — Leaflet + Tiles bleiben nach Login im Hintergrund geladen */}
           <div style={page === 'map' ? { height: '100%' } : { position: 'absolute', inset: 0, opacity: 0, pointerEvents: 'none', zIndex: -1 }}>
             {page === 'map' && <ClientMapPage clients={clients} darkMode={darkMode} onClientClick={handleClientClick} />}
