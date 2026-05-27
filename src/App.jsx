@@ -5357,89 +5357,100 @@ function ClientMapPage({ clients = [], darkMode = true, onClientClick }) {
       },
     })
 
-    // Jitter für Marker an identischen Koordinaten
+    const bg  = darkMode ? '#0f172a' : '#ffffff'
+    const bd  = darkMode ? '#1e293b' : '#e2e8f0'
+    const txt = darkMode ? '#f1f5f9' : '#1e293b'
+    const btnBg  = darkMode ? '#1e293b' : '#f1f5f9'
+    const btnTxt = darkMode ? '#06b6d4' : '#0e7490'
+    const subTxt = darkMode ? '#64748b' : '#94a3b8'
+
+    const popupOpts = { className: 'holysec-popup', autoClose: false, closeOnClick: false }
+
+    // Clients nach Position gruppieren
     const posGroups = {}
     visible.forEach(c => {
       const key = `${c.lat},${c.lng}`
       if (!posGroups[key]) posGroups[key] = []
-      posGroups[key].push(c.id)
+      posGroups[key].push(c)
     })
-    const getJitter = (clientId, lat, lng) => {
-      const key   = `${lat},${lng}`
-      const group = posGroups[key]
-      if (group.length === 1) return { lat, lng }
-      const idx    = group.indexOf(clientId)
-      const angle  = (2 * Math.PI * idx) / group.length
-      const r      = 0.0004
-      return { lat: lat + Math.sin(angle) * r, lng: lng + Math.cos(angle) * r }
+
+    const makeMarkerIcon = (col, count = 1) => {
+      const sz   = 34
+      const half = sz / 2
+      const glowPx = col.fill === CRITICALITY_COLOR.CRITICAL?.fill ? 14 : 8
+      if (count === 1) {
+        const dotSz = Math.round(sz * 0.35)
+        return L.divIcon({
+          html: `<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:${col.fill}1a;border:2px solid ${col.fill};box-shadow:0 0 ${glowPx}px ${col.fill}66,0 2px 8px rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;cursor:pointer">
+            <div style="width:${dotSz}px;height:${dotSz}px;border-radius:50%;background:${col.fill};box-shadow:0 0 6px ${col.fill}99"></div>
+          </div>`,
+          className: '', iconSize: [sz, sz], iconAnchor: [half, half], popupAnchor: [0, -half - 6],
+        })
+      }
+      // Gruppen-Icon: gestapelte Ringe + Zahl
+      return L.divIcon({
+        html: `<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:#0f172a;border:2px solid #06b6d4;box-shadow:0 0 12px #06b6d455,0 2px 8px rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative">
+          <div style="position:absolute;inset:-4px;border-radius:50%;border:1px solid #06b6d430;pointer-events:none"></div>
+          <span style="font-size:11px;font-weight:700;font-family:monospace;color:#06b6d4">${count}</span>
+        </div>`,
+        className: '', iconSize: [sz, sz], iconAnchor: [half, half], popupAnchor: [0, -half - 6],
+      })
     }
 
-    visible.forEach(c => {
-      const col     = CRITICALITY_COLOR[c.criticality] || CRITICALITY_COLOR.LOW
-      const sz      = 34
-      const half    = sz / 2
-      const dotSz   = Math.round(sz * 0.35)
-      const pulseCls = c.criticality === 'CRITICAL' ? 'hs-marker-pulse' : ''
-      const glowPx  = c.criticality === 'CRITICAL' ? 14 : c.criticality === 'HIGH' ? 8 : 5
-
-      const icon = L.divIcon({
-        html: `<div class="${pulseCls}" style="
-          width:${sz}px;height:${sz}px;
-          border-radius:50%;
-          background:${col.fill}1a;
-          border:2px solid ${col.fill};
-          box-shadow:0 0 ${glowPx}px ${col.fill}66, 0 2px 8px rgba(0,0,0,0.6);
-          display:flex;align-items:center;justify-content:center;
-          cursor:pointer;
-          transition:transform .15s;
-        ">
-          <div style="
-            width:${dotSz}px;height:${dotSz}px;
-            border-radius:50%;
-            background:${col.fill};
-            box-shadow:0 0 6px ${col.fill}99;
-          "></div>
-        </div>`,
-        className:   '',
-        iconSize:    [sz, sz],
-        iconAnchor:  [half, half],
-        popupAnchor: [0, -half - 6],
-      })
-
-      const pos    = getJitter(c.id, c.lat, c.lng)
-      const marker = L.marker([pos.lat, pos.lng], { icon })
-      marker.on('click', e => L.DomEvent.stopPropagation(e))
-
-      const bg     = darkMode ? '#0f172a' : '#ffffff'
-      const bd     = darkMode ? '#1e293b' : '#e2e8f0'
-      const txt    = darkMode ? '#f1f5f9' : '#1e293b'
-      const btnBg  = darkMode ? '#1e293b' : '#f1f5f9'
-      const btnTxt = darkMode ? '#06b6d4' : '#0e7490'
+    const makeSinglePopup = (c) => {
+      const col = CRITICALITY_COLOR[c.criticality] || CRITICALITY_COLOR.LOW
       const openLine = c.openFindings > 0
         ? `<div style="margin-top:6px;font-size:10px;font-family:monospace;color:#f87171">&#9888; ${c.openFindings} open finding${c.openFindings !== 1 ? 's' : ''}</div>`
         : ''
-
-      marker.bindPopup(`
-        <div style="background:${bg};border:1px solid ${bd};border-radius:10px;padding:14px;min-width:210px;font-family:monospace;box-shadow:0 8px 28px rgba(0,0,0,0.35)">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-            <div style="width:8px;height:8px;border-radius:50%;background:${col.fill};box-shadow:0 0 6px ${col.fill};flex-shrink:0"></div>
-            <div style="font-size:13px;font-weight:700;color:${txt}">${c.name}</div>
-          </div>
-          <div style="font-size:10px;color:#64748b;margin-bottom:8px">${c.city ?? ''} · ${c.industry}</div>
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-            <span style="font-size:10px;padding:2px 8px;border-radius:4px;background:${col.fill}22;color:${col.fill};border:1px solid ${col.stroke}55;font-weight:700;letter-spacing:.05em">${c.criticality}</span>
-            <span style="font-size:10px;color:#94a3b8">${c.status}</span>
-          </div>
-          ${openLine}
-          <button
-            class="map-detail-btn"
-            data-client-id="${c.id}"
-            style="margin-top:10px;width:100%;padding:7px 0;background:${btnBg};border:1px solid ${bd};border-radius:6px;color:${btnTxt};font-size:10px;font-family:monospace;font-weight:700;letter-spacing:0.08em;cursor:pointer;text-transform:uppercase;transition:opacity .15s"
-            onmouseover="this.style.opacity='.7'"
-            onmouseout="this.style.opacity='1'"
-          >&#8594; Details anzeigen</button>
+      return `<div style="background:${bg};border:1px solid ${bd};border-radius:10px;padding:14px;min-width:210px;font-family:monospace;box-shadow:0 8px 28px rgba(0,0,0,0.35)">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <div style="width:8px;height:8px;border-radius:50%;background:${col.fill};box-shadow:0 0 6px ${col.fill};flex-shrink:0"></div>
+          <div style="font-size:13px;font-weight:700;color:${txt}">${c.name}</div>
         </div>
-      `, { className: 'holysec-popup', autoClose: false, closeOnClick: false })
+        <div style="font-size:10px;color:${subTxt};margin-bottom:8px">${c.city ?? ''} · ${c.industry}</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+          <span style="font-size:10px;padding:2px 8px;border-radius:4px;background:${col.fill}22;color:${col.fill};border:1px solid ${col.fill}55;font-weight:700;letter-spacing:.05em">${c.criticality}</span>
+          <span style="font-size:10px;color:${subTxt}">${c.status}</span>
+        </div>
+        ${openLine}
+        <button class="map-detail-btn" data-client-id="${c.id}"
+          style="margin-top:10px;width:100%;padding:7px 0;background:${btnBg};border:1px solid ${bd};border-radius:6px;color:${btnTxt};font-size:10px;font-family:monospace;font-weight:700;letter-spacing:0.08em;cursor:pointer;text-transform:uppercase"
+          onmouseover="this.style.opacity='.7'" onmouseout="this.style.opacity='1'">&#8594; Details anzeigen</button>
+      </div>`
+    }
+
+    const makeGroupPopup = (group) => {
+      const rows = group.map(c => {
+        const col = CRITICALITY_COLOR[c.criticality] || CRITICALITY_COLOR.LOW
+        return `<button class="map-detail-btn" data-client-id="${c.id}"
+          style="width:100%;display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:7px;background:transparent;border:1px solid ${bd};cursor:pointer;text-align:left;transition:background .15s;margin-bottom:6px"
+          onmouseover="this.style.background='${btnBg}'" onmouseout="this.style.background='transparent'">
+          <div style="width:9px;height:9px;border-radius:50%;background:${col.fill};box-shadow:0 0 6px ${col.fill};flex-shrink:0"></div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:12px;font-weight:700;color:${txt};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.name}</div>
+            <div style="font-size:10px;color:${subTxt}">${c.industry} · ${c.criticality}</div>
+          </div>
+          <span style="font-size:10px;color:${btnTxt}">&#8594;</span>
+        </button>`
+      }).join('')
+      return `<div style="background:${bg};border:1px solid ${bd};border-radius:10px;padding:14px;min-width:230px;font-family:monospace;box-shadow:0 8px 28px rgba(0,0,0,0.35)">
+        <div style="font-size:10px;color:${subTxt};text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px">&#128205; ${group.length} Standorte</div>
+        ${rows}
+      </div>`
+    }
+
+    Object.values(posGroups).forEach(group => {
+      const [c0] = group
+      const col  = CRITICALITY_COLOR[c0.criticality] || CRITICALITY_COLOR.LOW
+      const icon = makeMarkerIcon(col, group.length)
+      const marker = L.marker([c0.lat, c0.lng], { icon })
+      marker.on('click', e => L.DomEvent.stopPropagation(e))
+
+      if (group.length === 1) {
+        marker.bindPopup(makeSinglePopup(c0), popupOpts)
+      } else {
+        marker.bindPopup(makeGroupPopup(group), popupOpts)
+      }
 
       clusterGroup.addLayer(marker)
     })
@@ -5449,17 +5460,33 @@ function ClientMapPage({ clients = [], darkMode = true, onClientClick }) {
     map.on('click', () => map.closePopup())
 
     map.on('popupopen', (e) => {
-      const btn = e.popup.getElement()?.querySelector('.map-detail-btn')
-      if (btn) {
+      e.popup.getElement()?.querySelectorAll('.map-detail-btn').forEach(btn => {
         btn.onclick = () => {
           const id = btn.dataset.clientId
           if (id && onClientClickRef.current) onClientClickRef.current(id)
         }
-      }
+      })
       if (flybackTimerRef.current !== null) {
         clearTimeout(flybackTimerRef.current)
         flybackTimerRef.current = null
+      } else {
+        savedViewRef.current = { center: map.getCenter(), zoom: map.getZoom() }
       }
+      const latlng = e.popup.getLatLng()
+      if (latlng) {
+        const targetZoom = Math.min(map.getZoom() + 2, 14)
+        map.flyTo(latlng, targetZoom, { duration: 0.5 })
+      }
+    })
+
+    map.on('popupclose', () => {
+      if (!savedViewRef.current) return
+      const saved = { ...savedViewRef.current }
+      flybackTimerRef.current = setTimeout(() => {
+        flybackTimerRef.current = null
+        savedViewRef.current    = null
+        if (mapRef.current) mapRef.current.flyTo(saved.center, saved.zoom, { duration: 0.6 })
+      }, 80)
     })
 
 
