@@ -5440,75 +5440,24 @@ function ClientMapPage({ clients = [], darkMode = true, onClientClick }) {
       </div>`
     }
 
-    let justExpanded = false
-
-    const collapseSpider = () => {
-      if (!spiderRef.current) return
-      spiderRef.current.forEach(l => { try { map.removeLayer(l) } catch {} })
-      spiderRef.current = null
-    }
-
-    const expandSpider = (centerLatLng, group) => {
-      collapseSpider()
-      justExpanded = true
-      setTimeout(() => { justExpanded = false }, 200)
-
-      // Feste lat/lng Offsets — unabhängig von Zoom-Animation
-      const n      = group.length
-      const r      = 0.0025   // ~250m Radius
-      const layers = []
-
-      group.forEach((c, i) => {
-        const angle  = (2 * Math.PI * i) / n - Math.PI / 2
-        const legEnd = L.latLng(
-          centerLatLng.lat + r * Math.sin(angle),
-          centerLatLng.lng + r * Math.cos(angle),
-        )
-
-        const leg = L.polyline([centerLatLng, legEnd], {
-          color: '#06b6d4', weight: 1.5, opacity: 0.4, dashArray: '4,5',
-        }).addTo(map)
-
-        const col    = CRITICALITY_COLOR[c.criticality] || CRITICALITY_COLOR.LOW
-        const icon   = makeMarkerIcon(col, 1)
-        const spider = L.marker(legEnd, { icon, zIndexOffset: 1000 })
-        spider._isSpider = true
-        spider.on('click', e => { L.DomEvent.stopPropagation(e); spider.openPopup() })
-        spider.bindPopup(makeSinglePopup(c), popupOpts)
-        spider.addTo(map)
-
-        layers.push(leg, spider)
-      })
-
-      spiderRef.current = layers
-    }
-
     Object.values(posGroups).forEach(group => {
       const [c0] = group
       const col  = CRITICALITY_COLOR[c0.criticality] || CRITICALITY_COLOR.LOW
       const icon = makeMarkerIcon(col, group.length)
       const marker = L.marker([c0.lat, c0.lng], { icon })
+      marker.on('click', e => L.DomEvent.stopPropagation(e))
 
-      if (group.length === 1) {
-        marker.on('click', e => L.DomEvent.stopPropagation(e))
-        marker.bindPopup(makeSinglePopup(c0), popupOpts)
-        clusterGroup.addLayer(marker)
-      } else {
-        marker.on('click', e => {
-          L.DomEvent.stopPropagation(e)
-          expandSpider(marker.getLatLng(), group)
-        })
-        marker.addTo(map)
-      }
+      const popupHtml = group.length === 1
+        ? makeSinglePopup(c0)
+        : makeGroupPopup(group)
+
+      marker.bindPopup(popupHtml, popupOpts)
+      clusterGroup.addLayer(marker)
     })
 
     map.addLayer(clusterGroup)
 
-    map.on('click', () => {
-      if (justExpanded) return
-      collapseSpider()
-      map.closePopup()
-    })
+    map.on('click', () => map.closePopup())
 
     map.on('popupopen', (e) => {
       e.popup.getElement()?.querySelectorAll('.map-detail-btn').forEach(btn => {
