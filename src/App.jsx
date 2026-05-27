@@ -1611,9 +1611,66 @@ function ClientList({ clients: allClients = [], engagements: allEngagements = []
   )
 }
 
+// ─── CLIENT MINI MAP ─────────────────────────────────────────────────────────
+
+function ClientMiniMap({ lat, lng, darkMode = true }) {
+  const mapDivRef = useRef(null)
+  const mapRef    = useRef(null)
+
+  useEffect(() => {
+    if (!mapDivRef.current || !lat || !lng) return
+    if (mapRef.current) { mapRef.current.remove(); mapRef.current = null }
+
+    const map = L.map(mapDivRef.current, {
+      center: [lat, lng],
+      zoom: 13,
+      zoomControl: false,
+      dragging: false,
+      touchZoom: false,
+      scrollWheelZoom: false,
+      doubleClickZoom: false,
+      boxZoom: false,
+      keyboard: false,
+      attributionControl: false,
+    })
+    mapRef.current = map
+    mapDivRef.current.style.background = darkMode ? '#0f172a' : '#f0f0f0'
+
+    const tileUrl = darkMode
+      ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+      : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
+    L.tileLayer(tileUrl, { subdomains: 'abcd', maxZoom: 18, updateWhenZooming: false }).addTo(map)
+
+    const icon = L.divIcon({
+      className: '',
+      html: '<div style="width:14px;height:14px;background:#22d3ee;border:2.5px solid white;border-radius:50%;box-shadow:0 0 10px rgba(34,211,238,0.7)"></div>',
+      iconSize: [14, 14],
+      iconAnchor: [7, 7],
+    })
+    L.marker([lat, lng], { icon }).addTo(map)
+
+    return () => { if (mapRef.current) { mapRef.current.remove(); mapRef.current = null } }
+  }, [lat, lng, darkMode])
+
+  if (!lat || !lng) return null
+
+  return (
+    <Panel className="overflow-hidden">
+      <div className={`flex items-center justify-between px-4 py-2.5 border-b ${darkMode ? 'border-[#1e293b]' : 'border-gray-200'}`}>
+        <div className="flex items-center gap-2">
+          <Map size={12} className="text-cyan-400" />
+          <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">Standort</span>
+        </div>
+        <span className="text-[10px] font-mono text-slate-600 tabular-nums">{lat.toFixed(4)}, {lng.toFixed(4)}</span>
+      </div>
+      <div ref={mapDivRef} className="h-52 w-full" />
+    </Panel>
+  )
+}
+
 // ─── CLIENT DETAIL ────────────────────────────────────────────────────────────
 
-function ClientDetail({ clientId, onBack, clients: allClients = [], findings: allFindings = [], engagements: allEngagements = [], reports: allReports = [], tipsLang = 'de', uiLang = 'en', onNav }) {
+function ClientDetail({ clientId, onBack, clients: allClients = [], findings: allFindings = [], engagements: allEngagements = [], reports: allReports = [], tipsLang = 'de', uiLang = 'en', onNav, darkMode = true }) {
   const [tab, setTab] = useState('overview')
   const client = allClients.find(c => c.id === clientId)
   if (!client) return null
@@ -1750,6 +1807,8 @@ function ClientDetail({ clientId, onBack, clients: allClients = [], findings: al
                 </div>
               </Panel>
             </div>
+
+            <ClientMiniMap lat={client.lat} lng={client.lng} darkMode={darkMode} />
           </div>
         )
       })()}
@@ -6226,7 +6285,7 @@ export default function App() {
           <div style={page === 'map' ? { height: '100%' } : { position: 'absolute', inset: 0, opacity: 0, pointerEvents: 'none', zIndex: -1 }}>
             {page === 'map' && <ClientMapPage clients={clients} darkMode={darkMode} onClientClick={handleClientClick} />}
           </div>
-          {page === 'client-detail'    && selectedClientId && <ClientDetail clientId={selectedClientId} onBack={handleBackToClients} clients={clients} findings={allFindings} engagements={allEngagements} reports={reports} tipsLang={tipsLang} uiLang={uiLang} onNav={handleNav} />}
+          {page === 'client-detail'    && selectedClientId && <ClientDetail clientId={selectedClientId} onBack={handleBackToClients} clients={clients} findings={allFindings} engagements={allEngagements} reports={reports} tipsLang={tipsLang} uiLang={uiLang} onNav={handleNav} darkMode={darkMode} />}
           {page === 'findings'         && <FindingsTracker currentUser={currentUser} assignments={assignments} findings={allFindings} onAddFinding={handleAddFinding} onEditFinding={handleEditFinding} onDeleteFinding={handleDeleteFinding} clients={clients} teamMembers={teamMembers} engagements={allEngagements} onSendReminder={handleSendReminder} defaultSeverity={pageOpts.severity} defaultStatus={pageOpts.status} defaultClientId={pageOpts.clientId || 'All'} defaultFindingId={pageOpts.findingId || null} tipsLang={tipsLang} />}
           {page === 'engagements'      && <EngagementPlanner teamMembers={teamMembers} assignments={assignments} onAssign={handleAssign} currentUser={currentUser} groups={engagementGroups} engagements={allEngagements} onAddEngagement={handleAddEngagement} onStatusChange={handleEngStatusChange} onEdit={handleEditEngagement} onDelete={handleDeleteEngagement} clients={clients} defaultStatus={pageOpts.status} defaultClientId={pageOpts.clientId || null} tipsLang={tipsLang} uiLang={uiLang} pendingReports={pendingReports} onEngDetail={handleEngDetailClick} />}
           {page === 'eng-detail'       && selectedEngId && <EngagementDetail engagementId={selectedEngId} onBack={handleBackToEngagements} clients={clients} teamMembers={teamMembers} assignments={assignments} engagements={allEngagements} pendingReports={pendingReports} onSetPendingReport={handleSetPendingReport} currentUser={currentUser} onEdit={handleEditEngagement} onDelete={handleDeleteEngagement} uiLang={uiLang} />}
