@@ -1613,9 +1613,22 @@ function ClientList({ clients: allClients = [], engagements: allEngagements = []
 
 // ─── CLIENT MINI MAP ─────────────────────────────────────────────────────────
 
-function ClientMiniMap({ lat, lng, city, darkMode = true }) {
+function ClientMiniMap({ lat, lng, darkMode = true }) {
   const mapDivRef = useRef(null)
   const mapRef    = useRef(null)
+  const [geo, setGeo] = useState(null)
+
+  useEffect(() => {
+    if (!lat || !lng) return
+    let cancelled = false
+    fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`, {
+      headers: { 'Accept-Language': 'de' }
+    })
+      .then(r => r.json())
+      .then(d => { if (!cancelled) setGeo(d.address || null) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [lat, lng])
 
   useEffect(() => {
     if (!mapDivRef.current || !lat || !lng) return
@@ -1634,12 +1647,11 @@ function ClientMiniMap({ lat, lng, city, darkMode = true }) {
       attributionControl: false,
     })
     mapRef.current = map
-    mapDivRef.current.style.background = darkMode ? '#0f172a' : '#f0f0f0'
+    mapDivRef.current.style.background = '#1a1a2e'
 
-    const tileUrl = darkMode
-      ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-      : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
-    L.tileLayer(tileUrl, { subdomains: 'abcd', maxZoom: 18, updateWhenZooming: false }).addTo(map)
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 18, updateWhenZooming: false,
+    }).addTo(map)
 
     const icon = L.divIcon({
       className: '',
@@ -1654,35 +1666,36 @@ function ClientMiniMap({ lat, lng, city, darkMode = true }) {
 
   if (!lat || !lng) return null
 
+  const road    = geo?.road || geo?.pedestrian || geo?.footway || null
+  const postcode = geo?.postcode || null
+  const city    = geo?.city || geo?.town || geo?.village || geo?.municipality || null
+  const state   = geo?.state || null
+  const country = geo?.country || null
+
+  const Row = ({ label, value }) => value ? (
+    <div>
+      <div className="text-[10px] font-mono text-slate-600 uppercase tracking-wider mb-0.5">{label}</div>
+      <div className="text-xs font-mono text-slate-200">{value}</div>
+    </div>
+  ) : null
+
   return (
     <Panel className="overflow-hidden">
       <div className="flex">
-        {/* Quadratische Karte */}
         <div ref={mapDivRef} className="w-48 h-48 shrink-0" />
-
-        {/* Standort-Info */}
         <div className={`flex-1 flex flex-col justify-center gap-3 px-5 border-l ${darkMode ? 'border-[#1e293b]' : 'border-gray-200'}`}>
           <div className="flex items-center gap-2">
             <Map size={13} className="text-cyan-400 shrink-0" />
             <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">Standort</span>
           </div>
-
-          {city && (
-            <div>
-              <div className="text-[10px] font-mono text-slate-600 uppercase tracking-wider mb-0.5">Stadt</div>
-              <div className="text-sm font-mono font-semibold text-slate-100">{city}</div>
-            </div>
-          )}
-
+          <Row label="Land" value={country} />
+          <Row label="Bundesland" value={state} />
+          <Row label="Stadt" value={city} />
+          <Row label="Straße" value={road} />
+          <Row label="PLZ" value={postcode} />
           <div>
             <div className="text-[10px] font-mono text-slate-600 uppercase tracking-wider mb-0.5">Koordinaten</div>
-            <div className="text-xs font-mono text-cyan-400 tabular-nums">{lat.toFixed(4)}° N</div>
-            <div className="text-xs font-mono text-cyan-400 tabular-nums">{lng.toFixed(4)}° E</div>
-          </div>
-
-          <div>
-            <div className="text-[10px] font-mono text-slate-600 uppercase tracking-wider mb-0.5">Zoom</div>
-            <div className="text-xs font-mono text-slate-400">Stadtebene (13)</div>
+            <div className="text-xs font-mono text-cyan-400 tabular-nums">{lat.toFixed(4)}° N · {lng.toFixed(4)}° E</div>
           </div>
         </div>
       </div>
@@ -1830,7 +1843,7 @@ function ClientDetail({ clientId, onBack, clients: allClients = [], findings: al
               </Panel>
             </div>
 
-            <ClientMiniMap lat={client.lat} lng={client.lng} city={client.city} darkMode={darkMode} />
+            <ClientMiniMap lat={client.lat} lng={client.lng} darkMode={darkMode} />
           </div>
         )
       })()}
