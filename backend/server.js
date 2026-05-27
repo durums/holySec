@@ -20,6 +20,7 @@ const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || 'http://localhost:5173'
 
 // ─── MIDDLEWARE ───────────────────────────────────────────────────────────────
 
+app.set('trust proxy', 1) // nginx sitzt davor und setzt X-Forwarded-For
 app.use(helmet({ contentSecurityPolicy: false }))
 app.use(cors({ origin: ALLOWED_ORIGIN, allowedHeaders: ['Content-Type'], credentials: true }))
 app.use(express.json({ limit: '20mb' }))
