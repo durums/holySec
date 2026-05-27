@@ -5364,7 +5364,7 @@ function ClientMapPage({ clients = [], darkMode = true, onClientClick }) {
     const btnTxt = darkMode ? '#06b6d4' : '#0e7490'
     const subTxt = darkMode ? '#64748b' : '#94a3b8'
 
-    const popupOpts = { className: 'holysec-popup', autoClose: false, closeOnClick: false }
+    const popupOpts = { className: 'holysec-popup', autoClose: true, closeOnClick: false }
 
     // Clients nach Position gruppieren
     const posGroups = {}
@@ -5474,7 +5474,7 @@ function ClientMapPage({ clients = [], darkMode = true, onClientClick }) {
       }
       const latlng = e.popup.getLatLng()
       if (latlng) {
-        const targetZoom = Math.min(map.getZoom() + 2, 14)
+        const targetZoom = Math.min(map.getZoom() + 1, 12)
         map.flyTo(latlng, targetZoom, { duration: 0.5 })
       }
     })
