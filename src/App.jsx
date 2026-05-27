@@ -5330,7 +5330,7 @@ function ClientMapPage({ clients = [], darkMode = true, onClientClick }) {
       maxClusterRadius: 48,
       spiderfyOnMaxZoom: true,
       showCoverageOnHover: false,
-      zoomToBoundsOnClick: true,
+      zoomToBoundsOnClick: false,
       iconCreateFunction: (cluster) => {
         const count  = cluster.getChildCount()
         const sz     = count >= 10 ? 46 : 38
@@ -5450,35 +5450,29 @@ function ClientMapPage({ clients = [], darkMode = true, onClientClick }) {
           if (id && onClientClickRef.current) onClientClickRef.current(id)
         }
       }
-      // Läuft ein Rücksprung-Timer? → anderer Marker wurde angeklickt während
-      // ein Popup offen war. Timer canceln und Original-View behalten.
       if (flybackTimerRef.current !== null) {
         clearTimeout(flybackTimerRef.current)
         flybackTimerRef.current = null
       } else {
-        // Kein laufender Timer → frisches Öffnen, View jetzt sichern
         savedViewRef.current = { center: map.getCenter(), zoom: map.getZoom() }
       }
       const latlng = e.popup.getLatLng()
       if (latlng) {
         const targetZoom = Math.max(map.getZoom(), Math.min(map.getZoom() + 2, 12))
-        map.flyTo(latlng, targetZoom, { duration: 0.4 })
+        // panTo statt flyTo — keine Zoom-Animation die popupclose auslösen könnte
+        map.panTo(latlng, { animate: true, duration: 0.3 })
       }
     })
 
     map.on('popupclose', () => {
       if (!savedViewRef.current) return
       const saved = { ...savedViewRef.current }
-      // Rücksprung verzögern: falls im selben Tick ein neues Popup öffnet
-      // (Marker-zu-Marker-Klick), cancelt popupopen den Timer
       flybackTimerRef.current = setTimeout(() => {
         flybackTimerRef.current = null
         savedViewRef.current = null
         if (mapRef.current) mapRef.current.flyTo(saved.center, saved.zoom, { duration: 0.5 })
-      }, 0)
+      }, 50)
     })
-
-    map.on('click', () => map.closePopup())
 
     // Wächter: entfernt Leaflet-BoxZoom-Overlay sofort aus dem DOM
     const zoomBoxWatcher = new MutationObserver((mutations) => {
