@@ -3962,7 +3962,7 @@ function TimeTrackingPage({ timeEntries, currentUser, members, uiLang = 'en' }) 
   }, [exportMemberId, members, timeEntries, exportRangeStart])
 
   return (
-    <div className="p-3 lg:p-6 max-w-7xl mx-auto w-full space-y-5">
+    <div className="p-3 lg:p-6 space-y-5">
       <TimeTrackingSection entries={timeEntries} currentUser={currentUser} members={members} uiLang={uiLang} />
       <Panel>
         <PanelHeader title="PDF Export" subtitle="Zeiterfassung eines Mitarbeiters oder aller Mitarbeiter ausgeben" />
@@ -6315,7 +6315,7 @@ export default function App() {
           {page === 'reports'          && <ReportingCenter reports={reports} onStatusChange={handleReportStatusChange} onAdd={handleAddReport} currentUser={currentUser} assignments={assignments} onAuditLog={handleAuditLogDownload} tipsLang={tipsLang} clients={clients} engagements={allEngagements} findings={allFindings} />}
           {page === 'team'             && <TeamPage members={teamMembers} currentUser={currentUser} onAdd={handleAddMember} onRemove={handleRemoveMember} assignments={assignments} engagements={allEngagements} userPresence={userPresence} timeEntries={timeEntries} onAuditLog={handleAuditLogDownload} uiLang={uiLang} />}
           {page === 'user-management'  && currentUser?.role === 'Admin' && (
-            <div className="p-3 lg:p-6 max-w-7xl mx-auto w-full">
+            <div className="p-3 lg:p-6">
               <UserManagementSection members={teamMembers} currentUser={currentUser} onAdd={handleAddMember} onRemove={handleRemoveMember} onEdit={handleEditMember} />
             </div>
           )}
