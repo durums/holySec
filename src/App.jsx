@@ -5134,7 +5134,7 @@ const CRITICALITY_COLOR = {
 const MAP_TILE_STYLES = {
   dark: [
     { id: 'dark_matter',  label: 'Dark Matter',  url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',       subdomains: 'abcd', attribution: '&copy; <a href="https://carto.com/">CARTO</a> &copy; OpenStreetMap' },
-    { id: 'esri_topo',    label: 'ESRI Topo',    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',              subdomains: '', attribution: '&copy; Esri, HERE, Garmin, &copy; OpenStreetMap' },
+    { id: 'esri_imagery', label: 'Satellite',     url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',              subdomains: '', attribution: '&copy; Esri, Maxar, Earthstar Geographics' },
   ],
   light: [
     { id: 'carto',        label: 'Carto Light',  url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',      subdomains: 'abcd', attribution: '&copy; <a href="https://carto.com/">CARTO</a> &copy; OpenStreetMap' },
