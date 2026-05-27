@@ -5257,6 +5257,23 @@ function ClientMapPage({ clients = [], darkMode = true, onClientClick }) {
       },
     })
 
+    // Jitter für Marker an identischen Koordinaten
+    const posGroups = {}
+    visible.forEach(c => {
+      const key = `${c.lat},${c.lng}`
+      if (!posGroups[key]) posGroups[key] = []
+      posGroups[key].push(c.id)
+    })
+    const getJitter = (clientId, lat, lng) => {
+      const key   = `${lat},${lng}`
+      const group = posGroups[key]
+      if (group.length === 1) return { lat, lng }
+      const idx    = group.indexOf(clientId)
+      const angle  = (2 * Math.PI * idx) / group.length
+      const r      = 0.0004
+      return { lat: lat + Math.sin(angle) * r, lng: lng + Math.cos(angle) * r }
+    }
+
     visible.forEach(c => {
       const col     = CRITICALITY_COLOR[c.criticality] || CRITICALITY_COLOR.LOW
       const sz      = 34
@@ -5289,7 +5306,8 @@ function ClientMapPage({ clients = [], darkMode = true, onClientClick }) {
         popupAnchor: [0, -half - 6],
       })
 
-      const marker = L.marker([c.lat, c.lng], { icon })
+      const pos    = getJitter(c.id, c.lat, c.lng)
+      const marker = L.marker([pos.lat, pos.lng], { icon })
 
       const bg     = darkMode ? '#0f172a' : '#ffffff'
       const bd     = darkMode ? '#1e293b' : '#e2e8f0'
