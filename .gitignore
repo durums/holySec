@@ -3,5 +3,15 @@ dist/
 .env
 .env.local
 *.log
+
+# Backend
 backend/.env
 backend/holysec.db
+backend/holysec.db-shm
+backend/holysec.db-wal
+backend/tmp.txt
+
+# Generated files
+*.pdf
+generate_pdf.py
+generate_pentest_report.py

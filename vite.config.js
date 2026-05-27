@@ -1,10 +1,11 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-export default defineConfig({
-  base: '/holySec/',
+export default defineConfig(({ mode }) => ({
+  base: mode === 'production' ? '/' : '/holySec/',
   plugins: [react()],
   server: {
+    host: true,
     proxy: {
       '/api': { target: 'http://localhost:3001', changeOrigin: true },
     },

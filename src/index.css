@@ -29,25 +29,27 @@
  * mit der mobilen Sidebar (z-50). Keine Einzelüberschreibungen nötig.
  */
 .leaflet-container {
-  background: #0f172a !important;   /* verhindert weißen Blitz beim Tile-Laden */
-  border-radius: inherit;            /* übernimmt rounded-xl vom Wrapper        */
+  /* Hintergrund wird per JS in ClientMapPage gesetzt (darkMode-abhängig) */
+  border-radius: inherit;
   overflow: hidden;
-  outline: none !important;         /* kein Focus-Ring beim Klicken/Ziehen      */
+  outline: none !important;
 }
 
-/* Haupt-Pane: einziges will-change nötig – Kinder erben GPU-Layer */
+/* Map-Pane animiert als Ganzes → ein GPU-Layer für die gesamte Karte */
 .leaflet-map-pane {
   will-change: transform;
 }
 
-/* Tiles: GPU-Compositing + verhindert Sub-Pixel-Lücken */
+/* Tile-Container auf GPU promoten — alle Tiles darin teilen sich EINEN Layer.
+   Kein transform3d auf einzelnen Tiles: verhindert Compositor-Gaps beim Zoom. */
+.leaflet-tile-container {
+  -webkit-transform: translateZ(0);
+  transform:         translateZ(0);
+}
+
 .leaflet-tile {
-  -webkit-transform:          translate3d(0, 0, 0);
-  transform:                  translate3d(0, 0, 0);
-  -webkit-backface-visibility: hidden;
-  backface-visibility:         hidden;
-  -webkit-filter:              brightness(100%);
-  filter:                      brightness(100%);
+  -webkit-filter: brightness(100%);
+  filter:         brightness(100%);
 }
 
 /* BoxZoom-Overlay ausblenden */
@@ -81,6 +83,61 @@
 .leaflet-cluster-anim .leaflet-marker-shadow {
   transition: transform .3s ease-out, opacity .3s ease-in;
 }
+
+/* ── Light Mode ────────────────────────────────────────────────────────────── */
+
+body.light-mode {
+  background-color: #d0d8e4;
+  color: #0f172a;
+}
+
+/* Haupt-Layout-Hintergrund */
+body.light-mode [class*="bg-[#0a0a0a]"] {
+  background-color: #d0d8e4 !important;
+}
+
+/* Panel / Card / Sidebar / Modal-Hintergrund */
+body.light-mode [class*="bg-[#0f172a]"] {
+  background-color: #e4eaf2 !important;
+}
+
+/* Inputs, Hover-States, innere Flächen */
+body.light-mode [class*="bg-[#1e293b]"],
+body.light-mode [class*="bg-[#172033]"] {
+  background-color: #d8e0ea !important;
+}
+
+/* Borders */
+body.light-mode [class*="border-[#1e293b]"] {
+  border-color: #b0bece !important;
+}
+
+/* Text-Farben */
+body.light-mode .text-slate-100 { color: #0f172a !important; }
+body.light-mode .text-slate-200 { color: #1e293b !important; }
+body.light-mode .text-slate-300 { color: #2d3f55 !important; }
+body.light-mode .text-slate-400 { color: #3d5068 !important; }
+body.light-mode .text-slate-500 { color: #526880 !important; }
+body.light-mode .text-slate-600 { color: #7a90a8 !important; }
+body.light-mode .text-slate-700 { color: #8fa4bb !important; }
+
+/* Hover-Effekte */
+body.light-mode .hover\:bg-slate-800\/20:hover { background-color: #c4ceda !important; }
+body.light-mode .hover\:bg-slate-800:hover     { background-color: #c4ceda !important; }
+
+/* Sidebar aktives Element bleibt cyan */
+body.light-mode .bg-cyan-500\/10 { background-color: rgba(6, 182, 212, 0.15) !important; }
+
+/* Grüner Online-Indikator: kräftiger im Light-Mode */
+body.light-mode .bg-green-400  { background-color: #16a34a !important; }
+body.light-mode .text-green-400 { color: #15803d !important; }
+body.light-mode .border-green-500\/30 { border-color: rgba(22,163,74,0.5) !important; }
+body.light-mode .bg-green-500\/10    { background-color: rgba(22,163,74,0.15) !important; }
+
+/* Scrollbar */
+body.light-mode ::-webkit-scrollbar-track { background: #d0d8e4; }
+body.light-mode ::-webkit-scrollbar-thumb { background: #7a90a8; border-radius: 4px; }
+body.light-mode ::-webkit-scrollbar-thumb:hover { background: #526880; }
 
 @layer utilities {
   .animate-pulse-slow {

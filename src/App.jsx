@@ -22,7 +22,17 @@ import {
   MONTHLY_ENGAGEMENTS, CVSS_DISTRIBUTION, SEVERITY_DIST,
   TEAM_MEMBERS as INITIAL_TEAM, USERS_AUTH
 } from './data.js'
-import { apiPut, apiState, apiDelete, apiLogin, apiLogout } from './api.js'
+import {
+  apiLogin, apiLogout, apiMe,
+  apiGetUsers, apiCreateUser, apiUpdateUser, apiUpdatePassword, apiDeleteUser,
+  apiGetClients, apiCreateClient, apiUpdateClient, apiDeleteClient,
+  apiGetFindings, apiCreateFinding, apiUpdateFinding, apiDeleteFinding,
+  apiGetEngagements, apiCreateEngagement, apiUpdateEngagement, apiDeleteEngagement,
+  apiGetReports, apiCreateReport, apiUpdateReport, apiDeleteReport,
+  apiGetTimeEntries, apiCreateTimeEntry, apiDeleteTimeEntry,
+  apiGetEngGroups, apiCreateEngGroup, apiUpdateEngGroup, apiDeleteEngGroup,
+  apiGetAuditLogs, apiCreateAuditLog,
+} from './api.js'
 
 // ─── CONSTANTS ───────────────────────────────────────────────────────────────
 
@@ -269,7 +279,7 @@ const MEMBER_COLORS_LIST = ['cyan', 'orange', 'purple', 'green', 'blue', 'pink',
 
 // ─── PDF GENERATOR ────────────────────────────────────────────────────────────
 
-function generateReportPDF(report, client) {
+function generateReportPDF(report, client, allFindings = []) {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
   const W = 210, H = 297
 
@@ -389,7 +399,7 @@ function generateReportPDF(report, client) {
   }
 
   // Findings table
-  const clientFindings = FINDINGS.filter(f => f.clientId === client?.id)
+  const clientFindings = allFindings.filter(f => f.clientId === client?.id)
   if (clientFindings.length > 0 && y < 240) {
     y = sectionHeader('FINDINGS SUMMARY', y)
 
@@ -509,7 +519,7 @@ const KpiCard = React.memo(function KpiCard({ label, value, sub, icon: Icon, acc
 
 // ─── LOGIN ────────────────────────────────────────────────────────────────────
 
-function NetworkCanvas() {
+function NetworkCanvas({ darkMode = true }) {
   const canvasRef = useRef(null)
   useEffect(() => {
     const canvas = canvasRef.current
@@ -517,13 +527,17 @@ function NetworkCanvas() {
     const ctx = canvas.getContext('2d')
     let animId, frame = 0
 
-    // Glow-Sprite einmalig pre-rendern statt createRadialGradient() per Frame
+    const C = darkMode
+      ? { r: 6, g: 182, b: 212, nodeAlpha: [0.20, 0.55], glowAlpha: 0.22, lineMax: 0.10, labelAlpha: [0.30, 0.20], pulseAlpha: 0.8 }
+      : { r: 2,  g: 100, b: 180, nodeAlpha: [0.50, 0.80], glowAlpha: 0.55, lineMax: 0.35, labelAlpha: [0.55, 0.30], pulseAlpha: 1.0 }
+    const rgb = `${C.r},${C.g},${C.b}`
+
     const GLOW = 18
     const gc = new OffscreenCanvas(GLOW * 2, GLOW * 2)
     const gctx = gc.getContext('2d')
     const gr = gctx.createRadialGradient(GLOW, GLOW, 0, GLOW, GLOW, GLOW)
-    gr.addColorStop(0, 'rgba(6,182,212,0.22)')
-    gr.addColorStop(1, 'rgba(6,182,212,0)')
+    gr.addColorStop(0, `rgba(${rgb},${C.glowAlpha})`)
+    gr.addColorStop(1, `rgba(${rgb},0)`)
     gctx.fillStyle = gr
     gctx.beginPath(); gctx.arc(GLOW, GLOW, GLOW, 0, Math.PI * 2); gctx.fill()
     const glowBitmap = gc.transferToImageBitmap()
@@ -550,7 +564,7 @@ function NetworkCanvas() {
     const BUCKETS = 8
     const buckets = Array.from({ length: BUCKETS }, () => [])
     const alphaStrs = Array.from({ length: BUCKETS }, (_, b) =>
-      `rgba(6,182,212,${((b + 1) / BUCKETS * 0.10).toFixed(3)})`
+      `rgba(${rgb},${((b + 1) / BUCKETS * C.lineMax).toFixed(3)})`
     )
 
     const draw = () => {
@@ -607,7 +621,7 @@ function NetworkCanvas() {
         const { from, to, t } = pulses[p]
         const n1 = nodes[from], n2 = nodes[to]
         if ((n1.x-n2.x)**2 + (n1.y-n2.y)**2 > MAX2) { pulses.splice(p, 1); continue }
-        ctx.fillStyle = `rgba(6,182,212,${Math.sin(t * Math.PI) * 0.8})`
+        ctx.fillStyle = `rgba(${rgb},${Math.sin(t * Math.PI) * C.pulseAlpha})`
         ctx.beginPath()
         ctx.arc(n1.x + (n2.x - n1.x) * t, n1.y + (n2.y - n1.y) * t, 2, 0, Math.PI * 2)
         ctx.fill()
@@ -621,10 +635,10 @@ function NetworkCanvas() {
           ctx.drawImage(glowBitmap, n.x - GLOW, n.y - GLOW)
           ctx.globalAlpha = 1
         }
-        ctx.fillStyle = `rgba(6,182,212,${(0.2 + pulse * 0.35).toFixed(2)})`
+        ctx.fillStyle = `rgba(${rgb},${(C.nodeAlpha[0] + pulse * C.nodeAlpha[1]).toFixed(2)})`
         ctx.beginPath(); ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2); ctx.fill()
         if (n.label) {
-          ctx.fillStyle = `rgba(100,116,139,${(0.3 + pulse * 0.2).toFixed(2)})`
+          ctx.fillStyle = `rgba(${rgb},${(C.labelAlpha[0] + pulse * C.labelAlpha[1]).toFixed(2)})`
           ctx.font = '7px monospace'
           ctx.fillText(n.label, n.x + n.r + 4, n.y + 3)
         }
@@ -633,7 +647,7 @@ function NetworkCanvas() {
 
     draw()
     return () => { cancelAnimationFrame(animId); window.removeEventListener('resize', resize) }
-  }, [])
+  }, [darkMode])
   return <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
 }
 
@@ -688,7 +702,7 @@ function LoginPage({ onLogin, darkMode, onToggleDark, usersAuth = USERS_AUTH }) 
       </button>
 
       {/* Network canvas background */}
-      <NetworkCanvas />
+      <NetworkCanvas darkMode={darkMode} />
 
       {/* Radial glow center */}
       <div className="absolute inset-0 pointer-events-none"
@@ -1409,7 +1423,7 @@ function ClientModal({ client, onSave, onClose }) {
 
 // ─── CLIENT LIST ─────────────────────────────────────────────────────────────
 
-function ClientList({ clients: allClients = CLIENTS, onClientClick, currentUser, assignments, onAdd, onEdit, onDelete, defaultStatus = 'All', tipsLang = 'de' }) {
+function ClientList({ clients: allClients = CLIENTS, engagements: allEngagements = [], onClientClick, currentUser, assignments, onAdd, onEdit, onDelete, defaultStatus = 'All', tipsLang = 'de' }) {
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState(defaultStatus)
   const [showModal, setShowModal] = useState(false)
@@ -1488,7 +1502,7 @@ function ClientList({ clients: allClients = CLIENTS, onClientClick, currentUser,
               const trCount  = clientReports.filter(r => r.type === 'Technical Report').length
               const esCount  = clientReports.filter(r => r.type === 'Executive Summary').length
               const rpCount  = clientReports.filter(r => r.type === 'Remediation Plan').length
-              const clientEngs = ENGAGEMENTS.filter(e => e.clientId === client.id).length
+              const clientEngs = allEngagements.filter(e => e.clientId === client.id).length
               const openFindings = client.openFindings ?? 0
               return (
                 <tr key={client.id} className="hover:bg-slate-800/20 transition-colors group">
@@ -1596,16 +1610,17 @@ function ClientList({ clients: allClients = CLIENTS, onClientClick, currentUser,
 
 // ─── CLIENT DETAIL ────────────────────────────────────────────────────────────
 
-function ClientDetail({ clientId, onBack, clients: allClients = CLIENTS, tipsLang = 'de', uiLang = 'en', onNav }) {
+function ClientDetail({ clientId, onBack, clients: allClients = CLIENTS, findings: allFindings = FINDINGS, engagements: allEngagements = ENGAGEMENTS, reports: allReports = REPORTS, tipsLang = 'de', uiLang = 'en', onNav }) {
   const [tab, setTab] = useState('overview')
   const client = allClients.find(c => c.id === clientId)
   if (!client) return null
 
-  const findings = FINDINGS.filter(f => client.findings.includes(f.id))
-  const engagements = ENGAGEMENTS.filter(e => client.engagements.includes(e.id))
-  const reports = REPORTS.filter(r => client.reports.includes(r.id))
-  const hoursPercent = Math.round((client.contract.used / client.contract.hours) * 100)
-  const ScopeIcon = SCOPE_ICONS[client.scopeType] || Globe
+  const findings    = allFindings.filter(f => f.clientId === client.id)
+  const engagements = allEngagements.filter(e => e.clientId === client.id)
+  const reports     = allReports.filter(r => r.clientId === client.id)
+  const contract     = client.contract || {}
+  const hoursPercent = contract.hours ? Math.round((contract.used / contract.hours) * 100) : 0
+  const ScopeIcon = SCOPE_ICONS[client.scopeType || client.scope_type] || Globe
 
   return (
     <div className="p-3 lg:p-6 space-y-5">
@@ -1642,8 +1657,8 @@ function ClientDetail({ clientId, onBack, clients: allClients = CLIENTS, tipsLan
       {tab === 'overview' && (() => {
         const openF = findings.filter(f => f.status === 'Open').length
         const closedF = findings.filter(f => f.status === 'Closed').length
-        const remainHours = client.contract.hours - client.contract.used
-        const daysLeft = daysUntil(client.contract.end)
+        const remainHours = (contract.hours || 0) - (contract.used || 0)
+        const daysLeft = daysUntil(contract.end)
         const criticalOpen = findings.filter(f => f.severity === 'CRITICAL' && f.status === 'Open').length
         return (
           <div className="space-y-4">
@@ -1651,8 +1666,8 @@ function ClientDetail({ clientId, onBack, clients: allClients = CLIENTS, tipsLan
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <KpiCard label="Open Findings" value={openF} sub="Aktuell offen" icon={ShieldAlert} danger={criticalOpen > 0} info={TIPS[tipsLang].clientOpenFindings} onClick={() => onNav?.('findings', { clientId: client.id, status: 'Open' })} />
               <KpiCard label="Closed" value={closedF} sub="Behoben" icon={CheckCircle2} accent={closedF > 0} info={TIPS[tipsLang].clientClosed} onClick={() => onNav?.('findings', { clientId: client.id, status: 'Closed' })} />
-              <KpiCard label="Restbudget" value={`${remainHours}h`} sub={`von ${client.contract.hours}h gesamt`} icon={Clock} danger={hoursPercent > 85} info={TIPS[tipsLang].clientBudget} />
-              <KpiCard label="Vertrag endet" value={daysLeft <= 0 ? 'ABGELAUFEN' : `${daysLeft}d`} sub={client.contract.end} icon={Calendar} danger={daysLeft <= 30 && daysLeft >= 0} info={TIPS[tipsLang].clientContractEnd} />
+              <KpiCard label="Restbudget" value={`${remainHours}h`} sub={`von ${contract.hours || 0}h gesamt`} icon={Clock} danger={hoursPercent > 85} info={TIPS[tipsLang].clientBudget} />
+              <KpiCard label="Vertrag endet" value={!contract.end ? '—' : daysLeft <= 0 ? 'ABGELAUFEN' : `${daysLeft}d`} sub={contract.end || '—'} icon={Calendar} danger={daysLeft <= 30 && daysLeft >= 0} info={TIPS[tipsLang].clientContractEnd} />
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -1680,9 +1695,9 @@ function ClientDetail({ clientId, onBack, clients: allClients = CLIENTS, tipsLan
                   <InfoTooltip text="Vertragslaufzeit und Stundenbudget. Das Budget zeigt gebuchte vs. verbrauchte Stunden — Überschreitungen müssen separat abgerechnet werden." />
                 </div>
                 <div className="space-y-2 text-xs font-mono">
-                  <div className="flex justify-between"><span className="text-slate-600">Start</span><span className="text-slate-300">{fmtDate(client.contract.start, uiLang)}</span></div>
-                  <div className="flex justify-between"><span className="text-slate-600">Ende</span><span className={daysLeft <= 30 ? 'text-red-400' : 'text-slate-300'}>{fmtDate(client.contract.end, uiLang)}</span></div>
-                  <div className="flex justify-between"><span className="text-slate-600">Stunden</span><span className="text-slate-300">{client.contract.used}h / {client.contract.hours}h</span></div>
+                  <div className="flex justify-between"><span className="text-slate-600">Start</span><span className="text-slate-300">{fmtDate(contract.start, uiLang)}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-600">Ende</span><span className={daysLeft <= 30 ? 'text-red-400' : 'text-slate-300'}>{fmtDate(contract.end, uiLang)}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-600">Stunden</span><span className="text-slate-300">{contract.used || 0}h / {contract.hours || 0}h</span></div>
                   <div className="flex justify-between"><span className="text-slate-600">Verbleibend</span><span className={remainHours < 20 ? 'text-red-400 font-semibold' : 'text-cyan-400'}>{remainHours}h</span></div>
                   <div className="mt-2">
                     <div className="flex justify-between mb-1 text-[10px]">
@@ -3111,10 +3126,10 @@ function ClientRadar({ onClientClick, currentUser, assignments, clients: allClie
 
 // ─── REPORTING CENTER ────────────────────────────────────────────────────────
 
-function NewReportModal({ onAdd, onClose }) {
+function NewReportModal({ onAdd, onClose, clients = [], engagements = [] }) {
   const today = new Date().toISOString().split('T')[0]
   const [form, setForm] = useState({
-    title: '', clientId: CLIENTS[0]?.id || '', type: 'Technical Report',
+    title: '', clientId: clients[0]?.id || '', type: 'Technical Report',
     date: today, status: 'Draft', engagementId: '',
   })
   const inputCls = "w-full bg-[#0a0a0a] border border-[#1e293b] rounded px-3 py-2 text-xs font-mono text-slate-200 placeholder-slate-700 focus:outline-none focus:border-cyan-500/50 transition-colors"
@@ -3155,7 +3170,7 @@ function NewReportModal({ onAdd, onClose }) {
             <div>
               <label className="text-[10px] font-mono text-slate-600 uppercase tracking-wider block mb-1.5">Client *</label>
               <select required value={form.clientId} onChange={e => setForm(f => ({ ...f, clientId: e.target.value }))} className={selectCls}>
-                {CLIENTS.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
             <div>
@@ -3188,8 +3203,8 @@ function NewReportModal({ onAdd, onClose }) {
             <label className="text-[10px] font-mono text-slate-600 uppercase tracking-wider block mb-1.5">Engagement (optional)</label>
             <select value={form.engagementId} onChange={e => setForm(f => ({ ...f, engagementId: e.target.value }))} className={selectCls}>
               <option value="">— kein Engagement —</option>
-              {ENGAGEMENTS.map(e => {
-                const c = CLIENTS.find(cl => cl.id === e.clientId)
+              {engagements.map(e => {
+                const c = clients.find(cl => cl.id === e.clientId)
                 return <option key={e.id} value={e.id}>{e.title} · {c?.name}</option>
               })}
             </select>
@@ -3296,7 +3311,7 @@ function ReportModal({ report, client, onClose }) {
   )
 }
 
-function ReportingCenter({ reports, onStatusChange, onAdd, currentUser, assignments, onAuditLog, tipsLang = 'de' }) {
+function ReportingCenter({ reports, onStatusChange, onAdd, currentUser, assignments, onAuditLog, tipsLang = 'de', clients = [], engagements = [], findings: allFindings = [] }) {
   const [selectedReport, setSelectedReport] = useState(null)
   const [filterClient, setFilterClient] = useState('All')
   const [filterType, setFilterType] = useState('All')
@@ -3312,7 +3327,7 @@ function ReportingCenter({ reports, onStatusChange, onAdd, currentUser, assignme
     return reports.filter(r => !r.engagementId || ids.has(r.engagementId))
   }, [currentUser?.role, reports, scopeEngagements])
 
-  const clientsWithReports = useMemo(() => CLIENTS.filter(c => scopeReports.some(r => r.clientId === c.id)), [scopeReports])
+  const clientsWithReports = useMemo(() => clients.filter(c => scopeReports.some(r => r.clientId === c.id)), [clients, scopeReports])
   const filtered = useMemo(() => scopeReports.filter(r =>
     (filterClient === 'All' || r.clientId === filterClient) &&
     (filterType === 'All' || r.type === filterType)
@@ -3375,7 +3390,7 @@ function ReportingCenter({ reports, onStatusChange, onAdd, currentUser, assignme
         <PanelHeader title="Report Registry" subtitle={`${filtered.length} documents`} info={TIPS[tipsLang].reportRegistry} />
         <div className="divide-y divide-[#1e293b]">
           {filtered.map(rep => {
-            const client = CLIENTS.find(c => c.id === rep.clientId)
+            const client = clients.find(c => c.id === rep.clientId)
             const Icon = REPORT_TYPE_ICONS[rep.type] || FileText
             return (
               <div key={rep.id} className="px-4 py-4 flex items-center justify-between hover:bg-slate-800/20 transition-colors group">
@@ -3401,7 +3416,7 @@ function ReportingCenter({ reports, onStatusChange, onAdd, currentUser, assignme
                     <Eye size={11} /> Preview
                   </button>
                   <button
-                    onClick={() => { generateReportPDF(rep, client); onAuditLog?.(`Report PDF: "${rep.title}"`) }}
+                    onClick={() => { generateReportPDF(rep, client, allFindings); onAuditLog?.(`Report PDF: "${rep.title}"`) }}
                     className="flex items-center gap-1.5 px-2.5 py-1.5 border border-[#1e293b] rounded text-xs font-mono text-slate-500 hover:text-green-400 hover:border-green-500/40 transition-all"
                   >
                     <Download size={11} /> PDF
@@ -3416,13 +3431,13 @@ function ReportingCenter({ reports, onStatusChange, onAdd, currentUser, assignme
       {selectedReport && (
         <ReportModal
           report={selectedReport}
-          client={CLIENTS.find(c => c.id === selectedReport.clientId)}
+          client={clients.find(c => c.id === selectedReport.clientId)}
           onClose={() => setSelectedReport(null)}
         />
       )}
 
       {showNewReport && (
-        <NewReportModal onAdd={onAdd} onClose={() => setShowNewReport(false)} />
+        <NewReportModal onAdd={onAdd} onClose={() => setShowNewReport(false)} clients={clients} engagements={engagements} />
       )}
     </div>
   )
@@ -5032,7 +5047,7 @@ function MemberTimeDetailModal({ member, timeEntries, onClose, onExport, uiLang 
 
 // ─── ENGAGEMENT GROUPS ───────────────────────────────────────────────────────
 
-function GroupModal({ group, teamMembers, engagements = ENGAGEMENTS, onSave, onClose }) {
+function GroupModal({ group, teamMembers, engagements = [], onSave, onClose }) {
   const [name, setName]               = useState(group?.name || '')
   const [description, setDescription] = useState(group?.description || '')
   const [memberIds, setMemberIds]     = useState(group?.memberIds || [])
@@ -5115,6 +5130,19 @@ const CRITICALITY_COLOR = {
   LOW:      { fill: '#22c55e', stroke: '#14532d' },
 }
 
+const MAP_TILE_STYLES = {
+  dark: [
+    { id: 'toner',              label: 'Toner',              url: 'https://tiles.stadiamaps.com/tiles/stamen_toner/{z}/{x}/{y}{r}.png',        subdomains: '', attribution: '&copy; Stadia Maps &copy; OpenMapTiles &copy; OpenStreetMap' },
+    { id: 'alidade_smooth_dark',label: 'Alidade Smooth Dark',url: 'https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png', subdomains: '', attribution: '&copy; Stadia Maps &copy; OpenMapTiles &copy; OpenStreetMap' },
+  ],
+  light: [
+    { id: 'carto',      label: 'Carto Light', url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',          subdomains: 'abcd', attribution: '&copy; CARTO' },
+    { id: 'toner_lite', label: 'Toner Lite',  url: 'https://tiles.stadiamaps.com/tiles/stamen_toner_lite/{z}/{x}/{y}{r}.png', subdomains: '',     attribution: '&copy; Stadia Maps' },
+  ],
+}
+
+const MAP_STYLE_LS_KEY = 'holysec_map_style'
+
 function ClientMapPage({ clients = CLIENTS, darkMode = true, onClientClick }) {
   const mapDivRef       = useRef(null)
   const mapRef          = useRef(null)
@@ -5122,6 +5150,30 @@ function ClientMapPage({ clients = CLIENTS, darkMode = true, onClientClick }) {
   const flybackTimerRef = useRef(null)
   const [filterStatus,      setFilterStatus]      = useState('All')
   const [filterCriticality, setFilterCriticality] = useState('All')
+  const [mapStyle, setMapStyle] = useState(() => {
+    try {
+      const saved = localStorage.getItem(MAP_STYLE_LS_KEY)
+      const mode  = darkMode ? 'dark' : 'light'
+      if (saved && MAP_TILE_STYLES[mode].find(s => s.id === saved)) return saved
+    } catch {}
+    return darkMode ? 'toner' : 'carto'
+  })
+
+  // Stil bei Änderung in localStorage speichern
+  useEffect(() => {
+    try { localStorage.setItem(MAP_STYLE_LS_KEY, mapStyle) } catch {}
+  }, [mapStyle])
+
+  // Wenn darkMode wechselt: gespeicherten Stil für neuen Modus laden oder Fallback
+  useEffect(() => {
+    const mode = darkMode ? 'dark' : 'light'
+    const available = MAP_TILE_STYLES[mode]
+    try {
+      const saved = localStorage.getItem(MAP_STYLE_LS_KEY)
+      if (saved && available.find(s => s.id === saved)) { setMapStyle(saved); return }
+    } catch {}
+    if (!available.find(s => s.id === mapStyle)) setMapStyle(available[0].id)
+  }, [darkMode])
 
   const mapped = useMemo(() => clients.filter(c => c.lat && c.lng), [clients])
 
@@ -5162,13 +5214,11 @@ function ClientMapPage({ clients = CLIENTS, darkMode = true, onClientClick }) {
     mapRef.current = map
     mapDivRef.current.style.background = darkMode ? '#0f172a' : '#f0f0f0'
 
-    L.tileLayer(
-      darkMode
-        ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-        : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-      {
-        attribution: '&copy; CARTO',
-        subdomains: 'abcd',
+    const modeStyles = MAP_TILE_STYLES[darkMode ? 'dark' : 'light']
+    const tileStyle  = modeStyles.find(s => s.id === mapStyle) || modeStyles[0]
+    L.tileLayer(tileStyle.url, {
+        attribution: tileStyle.attribution,
+        subdomains: tileStyle.subdomains || '',
         updateWhenZooming: false,
         updateWhenIdle: false,
         keepBuffer: 4,
@@ -5331,7 +5381,7 @@ function ClientMapPage({ clients = CLIENTS, darkMode = true, onClientClick }) {
       zoomBoxWatcher.disconnect()
       if (mapRef.current) { mapRef.current.remove(); mapRef.current = null }
     }
-  }, [visible, darkMode])
+  }, [visible, darkMode, mapStyle])
 
   const chipBase   = darkMode
     ? 'border-[#1e293b] text-slate-500 hover:text-slate-300 hover:border-slate-600'
@@ -5378,7 +5428,7 @@ function ClientMapPage({ clients = CLIENTS, darkMode = true, onClientClick }) {
         </div>
 
         {/* Kritikalitäts-Filter / Legende */}
-        <div className="ml-auto flex items-center gap-1">
+        <div className="flex items-center gap-1">
           <button onClick={() => setFilterCriticality('All')}
             className={`px-2.5 py-1.5 rounded text-[10px] font-mono border transition-all ${filterCriticality === 'All' ? chipActive : chipBase}`}>
             All
@@ -5388,6 +5438,16 @@ function ClientMapPage({ clients = CLIENTS, darkMode = true, onClientClick }) {
               className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-[10px] font-mono border transition-all ${filterCriticality === level ? chipActive : chipBase}`}>
               <span className="w-2 h-2 rounded-full shrink-0" style={{ background: col.fill }} />
               {level}
+            </button>
+          ))}
+        </div>
+
+        {/* Kartensti-Selector */}
+        <div className="ml-auto flex items-center gap-1">
+          {MAP_TILE_STYLES[darkMode ? 'dark' : 'light'].map(s => (
+            <button key={s.id} onClick={() => setMapStyle(s.id)}
+              className={`px-2.5 py-1.5 rounded text-[10px] font-mono border transition-all ${mapStyle === s.id ? chipActive : chipBase}`}>
+              {s.label}
             </button>
           ))}
         </div>
@@ -5404,7 +5464,7 @@ function ClientMapPage({ clients = CLIENTS, darkMode = true, onClientClick }) {
   )
 }
 
-function EngagementGroupsPage({ groups, onAdd, onDelete, onEdit, teamMembers, currentUser }) {
+function EngagementGroupsPage({ groups, onAdd, onDelete, onEdit, teamMembers, currentUser, engagements: allEngagements = [] }) {
   const canManage = ['Admin', 'Senior Pentester'].includes(currentUser?.role)
   const [showModal, setShowModal]       = useState(false)
   const [editingGroup, setEditingGroup] = useState(null)
@@ -5440,7 +5500,7 @@ function EngagementGroupsPage({ groups, onAdd, onDelete, onEdit, teamMembers, cu
           {groups.map(group => {
             const gc = GROUP_COLORS[group.color] || GROUP_COLORS.cyan
             const groupMembers = teamMembers.filter(m => group.memberIds.includes(m.id))
-            const linkedEng = ENGAGEMENTS.find(e => e.id === group.engagementId)
+            const linkedEng = allEngagements.find(e => e.id === group.engagementId)
             return (
               <Panel key={group.id} className="p-4">
                 <div className="flex items-start justify-between mb-3">
@@ -5509,6 +5569,7 @@ function EngagementGroupsPage({ groups, onAdd, onDelete, onEdit, teamMembers, cu
         <GroupModal
           group={editingGroup}
           teamMembers={teamMembers}
+          engagements={allEngagements}
           onSave={g => { editingGroup ? onEdit(g) : onAdd(g); setShowModal(false) }}
           onClose={() => setShowModal(false)}
         />
@@ -5717,62 +5778,32 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState(null)
   const [teamMembers, setTeamMembers] = useState(() => {
     try {
-      const saved = JSON.parse(localStorage.getItem('holysec_team_members') || 'null')
-      return saved || INITIAL_TEAM
-    } catch { return INITIAL_TEAM }
+      return null
+    } catch { return null }
   })
-  const [assignments, setAssignments] = useState(
-    Object.fromEntries(ENGAGEMENTS.map(e => [e.id, e.assignedTo || []]))
-  )
-  const [clients, setClients] = useState(() => {
-    try { const s = localStorage.getItem('holysec_clients'); return s ? JSON.parse(s) : CLIENTS } catch { return CLIENTS }
-  })
-  const [timeEntries, setTimeEntries] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('holysec_time_entries') || '[]') } catch { return [] }
-  })
-  const [activeTimer, setActiveTimer] = useState(() => {
+  const [assignments, setAssignments] = useState({})
+  const [clients, setClients]                 = useState([])
+  const [timeEntries, setTimeEntries]         = useState([])
+  const [activeTimer, setActiveTimer]         = useState(() => {
     try { return JSON.parse(localStorage.getItem('holysec_active_timer') || 'null') } catch { return null }
   })
   const [page, setPage] = useState('dashboard')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen]   = useState(false)
   const [selectedClientId, setSelectedClientId] = useState(null)
-  const [selectedEngId, setSelectedEngId] = useState(null)
-  const [reports, setReports] = useState(REPORTS)
-  const [darkMode, setDarkMode] = useState(true)
-  const [userPresence, setUserPresence] = useState('online')
-  const [engagementGroups, setEngagementGroups] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('holysec_eng_groups') || '[]') } catch { return [] }
-  })
-  const [customEngagements, setCustomEngagements] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('holysec_engagements') || '[]') } catch { return [] }
-  })
-  const [customFindings, setCustomFindings] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('holysec_findings') || '[]') } catch { return [] }
-  })
-  const [deletedFindingIds, setDeletedFindingIds] = useState(() => {
-    try { return new Set(JSON.parse(localStorage.getItem('holysec_deleted_findings') || '[]')) } catch { return new Set() }
-  })
-  const [findingEdits, setFindingEdits] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('holysec_finding_edits') || '{}') } catch { return {} }
-  })
-  const [pageOpts, setPageOpts] = useState({})
-  const [customUsersAuth, setCustomUsersAuth] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('holysec_users_auth') || '[]') } catch { return [] }
-  })
-  const [auditLogs, setAuditLogs] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('holysec_audit_logs') || '[]') } catch { return [] }
-  })
-  const [reminders, setReminders] = useState([])
-  const [uiLang, setUiLang] = useState(() => localStorage.getItem('holysec_ui_lang') || 'en')
+  const [selectedEngId, setSelectedEngId]     = useState(null)
+  const [reports, setReports]                 = useState([])
+  const [darkMode, setDarkMode]               = useState(true)
+  const [userPresence, setUserPresence]       = useState('online')
+  const [engagementGroups, setEngagementGroups] = useState([])
+  const [customEngagements, setCustomEngagements] = useState([])
+  const [customFindings, setCustomFindings]   = useState([])
+  const [pageOpts, setPageOpts]               = useState({})
+  const [auditLogs, setAuditLogs]             = useState([])
+  const [reminders, setReminders]             = useState([])
+  const [uiLang, setUiLang]   = useState(() => localStorage.getItem('holysec_ui_lang')   || 'en')
   const [tipsLang, setTipsLang] = useState(() => localStorage.getItem('holysec_tips_lang') || 'de')
-  const [engStatusOverrides, setEngStatusOverrides] = useState({})
-  const [engDataOverrides, setEngDataOverrides] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('holysec_eng_data_overrides') || '{}') } catch { return {} }
-  })
-  const [pendingReports, setPendingReports] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('holysec_pending_reports') || '{}') } catch { return {} }
-  })
+  const [pendingReports, setPendingReports]   = useState({})
   const sessionIpRef = useRef('–')
   const currentUserRef = useRef(null)
   const apiLoadedRef = useRef(false)
@@ -5785,79 +5816,59 @@ export default function App() {
       .catch(() => { sessionIpRef.current = window.location.hostname || 'lokal' })
   }, [])
 
-  // Boot: load persistent state from backend, or push defaults on first run
+  // Boot: alle Daten vom Backend laden, bei leerem DB einmalig seeden
   useEffect(() => {
-    apiState().then(state => {
-      if (!state || Object.keys(state).length === 0) {
-        apiPut('holysec_clients', clients)
-        apiPut('holysec_team_members', teamMembers)
-        apiPut('holysec_time_entries', timeEntries)
-        apiPut('holysec_eng_groups', engagementGroups)
-        apiPut('holysec_engagements', customEngagements)
-        apiPut('holysec_findings', customFindings)
-        apiPut('holysec_deleted_findings', [...deletedFindingIds])
-        apiPut('holysec_finding_edits', findingEdits)
-        apiPut('holysec_users_auth', customUsersAuth)
-        apiPut('holysec_audit_logs', auditLogs)
-        apiPut('holysec_pending_reports', pendingReports)
-        apiPut('holysec_assignments', assignments)
-        apiPut('holysec_eng_status_overrides', engStatusOverrides)
-        apiPut('holysec_eng_data_overrides', engDataOverrides)
+    Promise.all([
+      apiGetClients(), apiGetFindings(), apiGetEngagements(), apiGetReports(),
+      apiGetUsers(), apiGetTimeEntries(), apiGetEngGroups(), apiGetAuditLogs(),
+    ]).then(([c, f, e, r, u, t, g, a]) => {
+      const isEmpty = !c || c.length === 0
+      if (isEmpty) {
+        // Einmaliger Seed der Demo-Daten
+        fetch('/api/seed', { method: 'POST', credentials: 'include' }).then(() =>
+          Promise.all([
+            apiGetClients(), apiGetFindings(), apiGetEngagements(), apiGetReports(),
+            apiGetUsers(), apiGetTimeEntries(), apiGetEngGroups(), apiGetAuditLogs(),
+          ]).then(([c2, f2, e2, r2, u2, t2, g2, a2]) => {
+            if (c2) setClients(c2)
+            if (f2) setCustomFindings(f2)
+            if (e2) { setCustomEngagements(e2); setAssignments(Object.fromEntries(e2.map(x => [x.id, x.assignedTo || []]))) }
+            if (r2) setReports(r2)
+            if (u2) setTeamMembers(u2)
+            if (t2) setTimeEntries(t2)
+            if (g2) setEngagementGroups(g2)
+            if (a2) setAuditLogs(a2)
+            apiLoadedRef.current = true
+          })
+        )
       } else {
-        if (state.holysec_clients)              setClients(state.holysec_clients)
-        if (state.holysec_team_members)         setTeamMembers(state.holysec_team_members)
-        if (state.holysec_time_entries)         setTimeEntries(state.holysec_time_entries)
-        if (state.holysec_eng_groups)           setEngagementGroups(state.holysec_eng_groups)
-        if (state.holysec_engagements)          setCustomEngagements(state.holysec_engagements)
-        if (state.holysec_findings)             setCustomFindings(state.holysec_findings)
-        if (state.holysec_deleted_findings)     setDeletedFindingIds(new Set(state.holysec_deleted_findings))
-        if (state.holysec_finding_edits)        setFindingEdits(state.holysec_finding_edits)
-        if (state.holysec_users_auth)           setCustomUsersAuth(state.holysec_users_auth)
-        if (state.holysec_audit_logs)           setAuditLogs(state.holysec_audit_logs)
-        if (state.holysec_pending_reports)      setPendingReports(state.holysec_pending_reports)
-        if (state.holysec_assignments)          setAssignments(state.holysec_assignments)
-        if (state.holysec_eng_status_overrides) setEngStatusOverrides(state.holysec_eng_status_overrides)
-        if (state.holysec_eng_data_overrides)   setEngDataOverrides(state.holysec_eng_data_overrides)
+        if (c) setClients(c)
+        if (f) setCustomFindings(f)
+        if (e) { setCustomEngagements(e); setAssignments(Object.fromEntries(e.map(x => [x.id, x.assignedTo || []]))) }
+        if (r) setReports(r)
+        if (u) setTeamMembers(u)
+        if (t) setTimeEntries(t)
+        if (g) setEngagementGroups(g)
+        if (a) setAuditLogs(a)
+        apiLoadedRef.current = true
       }
-      apiLoadedRef.current = true
     }).catch(() => { apiLoadedRef.current = true })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Self-healing: restore members whose profile was stored in customUsersAuth
-  // and clean up auth entries that have neither a matching member nor stored profile
-  useEffect(() => {
-    setCustomUsersAuth(prev => {
-      const healed = prev.filter(a => a.memberData)
-      const orphaned = prev.filter(a => !a.memberData && !teamMembers.some(m => m.id === a.memberId))
-      if (orphaned.length > 0) {
-        // remove orphaned entries without memberData (unrecoverable)
-        return prev.filter(a => !orphaned.includes(a))
-      }
-      return prev
-    })
-    setTeamMembers(prev => {
-      const existingIds = new Set(prev.map(m => m.id))
-      const toRestore = customUsersAuth
-        .filter(a => a.memberData && !existingIds.has(a.memberId))
-        .map(a => a.memberData)
-      return toRestore.length > 0 ? [...prev, ...toRestore] : prev
-    })
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    const trimmed = auditLogs.slice(-1000)
-    localStorage.setItem('holysec_audit_logs', JSON.stringify(trimmed))
-    if (apiLoadedRef.current) apiPut('holysec_audit_logs', trimmed)
-  }, [auditLogs])
 
   const logEvent = useCallback((action, details, category = 'general', userOverride = null) => {
     const user = userOverride || currentUserRef.current
     if (!user) return
+    const entry = {
+      id: `log_${Date.now()}_${Math.random().toString(36).slice(2,5)}`,
+      userId: user.id, userName: user.name, role: user.role,
+      action, details, category, ip: sessionIpRef.current, timestamp: new Date().toISOString(),
+    }
     setAuditLogs(prev => {
-      const entry = { id: `log_${Date.now()}_${Math.random().toString(36).slice(2,5)}`, userId: user.id, userName: user.name, role: user.role, action, details, category, ip: sessionIpRef.current, timestamp: new Date().toISOString() }
       const next = [...prev, entry]
       return next.length > 1000 ? next.slice(-1000) : next
     })
+    apiCreateAuditLog({ action, details, category })
   }, [])
 
   const handleSendReminder = useCallback((r) => {
@@ -5874,117 +5885,88 @@ export default function App() {
   useEffect(() => { localStorage.setItem('holysec_tips_lang', tipsLang) }, [tipsLang])
 
   useEffect(() => {
-    localStorage.setItem('holysec_pending_reports', JSON.stringify(pendingReports))
-    if (apiLoadedRef.current) apiPut('holysec_pending_reports', pendingReports)
-  }, [pendingReports])
-
-  useEffect(() => {
-    localStorage.setItem('holysec_clients', JSON.stringify(clients))
-    if (apiLoadedRef.current) apiPut('holysec_clients', clients)
-  }, [clients])
-
-  useEffect(() => {
-    const today = new Date().toISOString().split('T')[0]
-    const allEngs = [...ENGAGEMENTS, ...customEngagements]
-    setClients(prev => prev.map(c => {
-      if (c.status !== 'Pending') return c
-      const started = allEngs.some(e => e.clientId === c.id && e.start <= today)
-      return started ? { ...c, status: 'Active' } : c
-    }))
-  }, [customEngagements])
-
-  useEffect(() => {
-    localStorage.setItem('holysec_time_entries', JSON.stringify(timeEntries))
-    if (apiLoadedRef.current) apiPut('holysec_time_entries', timeEntries)
-  }, [timeEntries])
-
-  useEffect(() => {
-    localStorage.setItem('holysec_team_members', JSON.stringify(teamMembers))
-    if (apiLoadedRef.current) apiPut('holysec_team_members', teamMembers)
-  }, [teamMembers])
-
-  useEffect(() => {
     if (activeTimer) localStorage.setItem('holysec_active_timer', JSON.stringify(activeTimer))
     else localStorage.removeItem('holysec_active_timer')
   }, [activeTimer])
 
   useEffect(() => {
-    localStorage.setItem('holysec_eng_groups', JSON.stringify(engagementGroups))
-    if (apiLoadedRef.current) apiPut('holysec_eng_groups', engagementGroups)
-  }, [engagementGroups])
-
-  useEffect(() => {
-    localStorage.setItem('holysec_engagements', JSON.stringify(customEngagements))
-    if (apiLoadedRef.current) apiPut('holysec_engagements', customEngagements)
+    const today = new Date().toISOString().split('T')[0]
+    setClients(prev => prev.map(c => {
+      if (c.status !== 'Pending') return c
+      const started = customEngagements.some(e => e.clientId === c.id && e.start <= today)
+      return started ? { ...c, status: 'Active' } : c
+    }))
   }, [customEngagements])
 
-  useEffect(() => {
-    localStorage.setItem('holysec_findings', JSON.stringify(customFindings))
-    if (apiLoadedRef.current) apiPut('holysec_findings', customFindings)
-  }, [customFindings])
 
-  useEffect(() => {
-    const arr = [...deletedFindingIds]
-    localStorage.setItem('holysec_deleted_findings', JSON.stringify(arr))
-    if (apiLoadedRef.current) apiPut('holysec_deleted_findings', arr)
-  }, [deletedFindingIds])
-
-  useEffect(() => {
-    localStorage.setItem('holysec_finding_edits', JSON.stringify(findingEdits))
-    if (apiLoadedRef.current) apiPut('holysec_finding_edits', findingEdits)
-  }, [findingEdits])
-
-  useEffect(() => {
-    localStorage.setItem('holysec_users_auth', JSON.stringify(customUsersAuth))
-    if (apiLoadedRef.current) apiPut('holysec_users_auth', customUsersAuth)
-  }, [customUsersAuth])
-
-  useEffect(() => {
-    if (apiLoadedRef.current) apiPut('holysec_assignments', assignments)
-  }, [assignments])
-
-  useEffect(() => {
-    if (apiLoadedRef.current) apiPut('holysec_eng_status_overrides', engStatusOverrides)
-  }, [engStatusOverrides])
-
-  useEffect(() => {
-    localStorage.setItem('holysec_eng_data_overrides', JSON.stringify(engDataOverrides))
-    if (apiLoadedRef.current) apiPut('holysec_eng_data_overrides', engDataOverrides)
-  }, [engDataOverrides])
-
-  const handleAddGroup    = useCallback((g) => { setEngagementGroups(p => [...p, g]); logEvent('GRUPPE_ERSTELLT', g.name, 'groups') }, [logEvent])
-  const handleEditGroup   = useCallback((g) => { setEngagementGroups(p => p.map(x => x.id === g.id ? g : x)); logEvent('GRUPPE_BEARBEITET', g.name, 'groups') }, [logEvent])
-  const handleDeleteGroup = useCallback((id) => { setEngagementGroups(p => p.filter(x => x.id !== id)); logEvent('GRUPPE_GELÖSCHT', `ID: ${id}`, 'groups') }, [logEvent])
-
-  const handleReportStatusChange = useCallback((id) => {
-    const cycle = { Draft: 'Delivered', Delivered: 'Final', Final: 'Draft' }
-    setReports(prev => prev.map(r => {
-      if (r.id !== id) return r
-      logEvent('REPORT_STATUS', `"${r.title}" → ${cycle[r.status]}`, 'reports')
-      return { ...r, status: cycle[r.status] || r.status }
-    }))
+  const handleAddGroup    = useCallback(async (g) => {
+    const saved = await apiCreateEngGroup(g)
+    if (saved) setEngagementGroups(p => [...p, saved])
+    logEvent('GRUPPE_ERSTELLT', g.name, 'groups')
+  }, [logEvent])
+  const handleEditGroup   = useCallback(async (g) => {
+    const saved = await apiUpdateEngGroup(g.id, g)
+    if (saved) setEngagementGroups(p => p.map(x => x.id === g.id ? saved : x))
+    logEvent('GRUPPE_BEARBEITET', g.name, 'groups')
+  }, [logEvent])
+  const handleDeleteGroup = useCallback(async (id) => {
+    await apiDeleteEngGroup(id)
+    setEngagementGroups(p => p.filter(x => x.id !== id))
+    logEvent('GRUPPE_GELÖSCHT', `ID: ${id}`, 'groups')
   }, [logEvent])
 
-  const handleAddReport = useCallback((report) => {
-    setReports(prev => [...prev, report])
+  const handleReportStatusChange = useCallback(async (id) => {
+    const cycle = { Draft: 'Delivered', Delivered: 'Final', Final: 'Draft' }
+    const rep = reports.find(r => r.id === id)
+    if (!rep) return
+    const next = cycle[rep.status] || rep.status
+    const saved = await apiUpdateReport(id, { ...rep, status: next })
+    if (saved) setReports(prev => prev.map(r => r.id === id ? saved : r))
+    logEvent('REPORT_STATUS', `"${rep.title}" → ${next}`, 'reports')
+  }, [reports, logEvent])
+
+  const handleAddReport = useCallback(async (report) => {
+    const saved = await apiCreateReport(report)
+    if (saved) setReports(prev => [...prev, saved])
     logEvent('REPORT_ERSTELLT', `"${report.title}" [${report.type}]`, 'reports')
   }, [logEvent])
 
-  const handleLogin = useCallback((memberId) => {
-    let member = teamMembers.find(m => m.id === memberId)
-    if (!member) {
-      // Fallback: recover from stored memberData in customUsersAuth
-      const authEntry = customUsersAuth.find(a => a.memberId === memberId)
-      if (authEntry?.memberData) {
-        member = authEntry.memberData
-        setTeamMembers(prev => prev.some(m => m.id === memberId) ? prev : [...prev, member])
-      }
+  const handleLogin = useCallback(async (memberId) => {
+    const me = await apiMe()
+    if (!me) return
+    setCurrentUser(me)
+    logEvent('LOGIN', `Anmeldung von ${window.location.host}`, 'auth', me)
+    const [c, f, e, r, u, t, g, a] = await Promise.all([
+      apiGetClients(), apiGetFindings(), apiGetEngagements(), apiGetReports(),
+      apiGetUsers(), apiGetTimeEntries(), apiGetEngGroups(), apiGetAuditLogs(),
+    ])
+    const isEmpty = !c || c.length === 0
+    if (isEmpty) {
+      await fetch('/api/seed', { method: 'POST', credentials: 'include' })
+      const [c2, f2, e2, r2, u2, t2, g2, a2] = await Promise.all([
+        apiGetClients(), apiGetFindings(), apiGetEngagements(), apiGetReports(),
+        apiGetUsers(), apiGetTimeEntries(), apiGetEngGroups(), apiGetAuditLogs(),
+      ])
+      if (c2) setClients(c2)
+      if (f2) setCustomFindings(f2)
+      if (e2) { setCustomEngagements(e2); setAssignments(Object.fromEntries(e2.map(x => [x.id, x.assignedTo || []]))) }
+      if (r2) setReports(r2)
+      if (u2) setTeamMembers(u2)
+      if (t2) setTimeEntries(t2)
+      if (g2) setEngagementGroups(g2)
+      if (a2) setAuditLogs(a2)
+    } else {
+      if (c) setClients(c)
+      if (f) setCustomFindings(f)
+      if (e) { setCustomEngagements(e); setAssignments(Object.fromEntries(e.map(x => [x.id, x.assignedTo || []]))) }
+      if (r) setReports(r)
+      if (u) setTeamMembers(u)
+      if (t) setTimeEntries(t)
+      if (g) setEngagementGroups(g)
+      if (a) setAuditLogs(a)
     }
-    if (member) {
-      setCurrentUser(member)
-      logEvent('LOGIN', `Anmeldung von ${window.location.host}`, 'auth', member)
-    }
-  }, [teamMembers, customUsersAuth, logEvent])
+    apiLoadedRef.current = true
+  }, [logEvent])
 
   const handleLogout = useCallback(() => {
     if (activeTimer) {
@@ -6005,6 +5987,10 @@ export default function App() {
     logEvent('LOGOUT', 'Abgemeldet', 'auth')
     apiLogout()
     setCurrentUser(null)
+    setClients([]); setCustomFindings([]); setCustomEngagements([])
+    setReports([]); setTeamMembers([]); setTimeEntries([])
+    setEngagementGroups([]); setAuditLogs([]); setAssignments({})
+    apiLoadedRef.current = false
     setPage('dashboard')
   }, [logEvent, activeTimer])
 
@@ -6015,32 +6001,26 @@ export default function App() {
     return () => window.removeEventListener('holysec:unauthorized', handler)
   }, [handleLogout])
 
-  const handleAddMember = useCallback((member) => {
+  const handleAddMember = useCallback(async (member) => {
     const { password, ...memberData } = member
-    setTeamMembers(prev => [...prev, memberData])
-    if (password) setCustomUsersAuth(prev => [...prev, { email: memberData.email, password, memberId: memberData.id, memberData }])
+    const saved = await apiCreateUser({ ...memberData, password })
+    if (saved) setTeamMembers(prev => [...prev, saved])
     logEvent('MITARBEITER_ERSTELLT', `${memberData.name} [${memberData.role}]`, 'team')
   }, [logEvent])
-  const handleRemoveMember = useCallback((id) => {
+  const handleRemoveMember = useCallback(async (id) => {
     const m = teamMembers.find(x => x.id === id)
+    await apiDeleteUser(id)
     setTeamMembers(prev => prev.filter(x => x.id !== id))
-    setCustomUsersAuth(prev => prev.filter(a => a.memberId !== id))
     logEvent('MITARBEITER_ENTFERNT', m ? `${m.name} [${m.role}]` : id, 'team')
   }, [teamMembers, logEvent])
-  const handleEditMember = useCallback((member) => {
+  const handleEditMember = useCallback(async (member) => {
     const { password, ...memberData } = member
-    setTeamMembers(prev => prev.map(m => m.id === memberData.id ? memberData : m))
-    setCurrentUser(prev => prev?.id === memberData.id ? memberData : prev)
-    if (password) {
-      setCustomUsersAuth(prev => {
-        const idx = prev.findIndex(a => a.memberId === memberData.id)
-        const entry = { email: memberData.email, password, memberId: memberData.id, memberData }
-        if (idx >= 0) { const n = [...prev]; n[idx] = entry; return n }
-        return [...prev, entry]
-      })
-    } else {
-      setCustomUsersAuth(prev => prev.map(a => a.memberId === memberData.id ? { ...a, email: memberData.email, memberData } : a))
+    const saved = await apiUpdateUser(memberData.id, memberData)
+    if (saved) {
+      setTeamMembers(prev => prev.map(m => m.id === memberData.id ? saved : m))
+      setCurrentUser(prev => prev?.id === memberData.id ? saved : prev)
     }
+    if (password) await apiUpdatePassword(memberData.id, password)
     logEvent('MITARBEITER_BEARBEITET', `${memberData.name} [${memberData.role}]${password ? ' + Passwort geändert' : ''}`, 'team')
   }, [logEvent])
   const handleAssign = useCallback((engId, memberIds) => {
@@ -6048,18 +6028,19 @@ export default function App() {
     logEvent('ZUWEISUNG_GEÄNDERT', `Engagement ${engId} → ${memberIds.length} Mitglieder`, 'engagements')
   }, [logEvent])
 
-  const handleAddFinding = useCallback((f) => {
-    setCustomFindings(prev => [...prev, f])
+  const handleAddFinding = useCallback(async (f) => {
+    const saved = await apiCreateFinding(f)
+    if (saved) setCustomFindings(prev => [...prev, saved])
     logEvent('FINDING_ERSTELLT', `"${f.title}" [${f.severity}] — ${f.category}`, 'findings')
   }, [logEvent])
-  const handleDeleteFinding = useCallback((id) => {
-    setDeletedFindingIds(prev => new Set([...prev, id]))
+  const handleDeleteFinding = useCallback(async (id) => {
+    await apiDeleteFinding(id)
     setCustomFindings(prev => prev.filter(f => f.id !== id))
     logEvent('FINDING_GELÖSCHT', `ID: ${id}`, 'findings')
   }, [logEvent])
-  const handleEditFinding = useCallback((updated) => {
-    setFindingEdits(prev => ({ ...prev, [updated.id]: updated }))
-    setCustomFindings(prev => prev.map(f => f.id === updated.id ? updated : f))
+  const handleEditFinding = useCallback(async (updated) => {
+    const saved = await apiUpdateFinding(updated.id, updated)
+    if (saved) setCustomFindings(prev => prev.map(f => f.id === updated.id ? saved : f))
     logEvent('FINDING_BEARBEITET', `"${updated.title}" [${updated.severity}]`, 'findings')
   }, [logEvent])
   const handleNav = useCallback((targetPage, opts = {}) => {
@@ -6067,36 +6048,26 @@ export default function App() {
     setPageOpts(opts)
   }, [])
 
-  const handleAddEngagement = useCallback((eng) => {
-    const withTs = { ...eng, createdAt: Date.now() }
-    setCustomEngagements(prev => [...prev, withTs])
-    setAssignments(prev => ({ ...prev, [eng.id]: [] }))
+  const handleAddEngagement = useCallback(async (eng) => {
+    const saved = await apiCreateEngagement(eng)
+    if (saved) {
+      setCustomEngagements(prev => [...prev, saved])
+      setAssignments(prev => ({ ...prev, [saved.id]: [] }))
+    }
     logEvent('ENGAGEMENT_ERSTELLT', `"${eng.title}" [${eng.type}] — ${eng.status}`, 'engagements')
   }, [logEvent])
 
-  const handleEditEngagement = useCallback((eng) => {
-    const isCustom = customEngagements.some(e => e.id === eng.id)
-    if (isCustom) {
-      setCustomEngagements(prev => prev.map(e => e.id === eng.id ? { ...e, ...eng } : e))
-    } else {
-      setEngStatusOverrides(prev => ({ ...prev, [eng.id]: eng.status }))
-      setEngDataOverrides(prev => ({
-        ...prev,
-        [eng.id]: { ...prev[eng.id], phaseNotes: eng.phaseNotes, phaseChecks: eng.phaseChecks },
-      }))
-    }
+  const handleEditEngagement = useCallback(async (eng) => {
+    const saved = await apiUpdateEngagement(eng.id, eng)
+    if (saved) setCustomEngagements(prev => prev.map(e => e.id === eng.id ? saved : e))
     logEvent('ENGAGEMENT_BEARBEITET', `"${eng.title}"`, 'engagements')
-  }, [customEngagements, logEvent])
+  }, [logEvent])
 
-  const handleDeleteEngagement = useCallback((id) => {
-    const isCustom = customEngagements.some(e => e.id === id)
-    if (isCustom) {
-      setCustomEngagements(prev => prev.filter(e => e.id !== id))
-    } else {
-      setEngStatusOverrides(prev => { const n = { ...prev }; n[`_del_${id}`] = 'DELETED'; return n })
-    }
+  const handleDeleteEngagement = useCallback(async (id) => {
+    await apiDeleteEngagement(id)
+    setCustomEngagements(prev => prev.filter(e => e.id !== id))
     logEvent('ENGAGEMENT_GELÖSCHT', `ID: ${id}`, 'engagements')
-  }, [customEngagements, logEvent])
+  }, [logEvent])
 
   const handleSetPendingReport = useCallback((engId, report) => {
     setPendingReports(prev => {
@@ -6109,74 +6080,51 @@ export default function App() {
     })
   }, [])
 
-  const handleEngStatusChange = useCallback((id) => {
+  const handleEngStatusChange = useCallback(async (id) => {
     const cycle = { Planned: 'Active', Active: 'On Hold', 'On Hold': 'Completed', Completed: 'Planned' }
-    const autoPublish = (engTitle, next) => {
-      if (next === 'Completed') {
-        setPendingReports(prev => {
-          const pr = prev[id]
-          if (!pr?.title) return prev
-          const report = {
-            id: `r${Date.now()}`,
-            clientId: (customEngagements.find(e => e.id === id) || ENGAGEMENTS.find(e => e.id === id))?.clientId,
-            engagementId: id,
-            title: pr.title,
-            type: pr.type,
-            date: new Date().toISOString().split('T')[0],
-            status: 'Draft',
-          }
-          setReports(rs => [...rs, report])
-          logEvent('REPORT_ERSTELLT', `"${pr.title}" [${pr.type}] — auto-publiziert`, 'reports')
-          const next2 = { ...prev }
-          delete next2[id]
-          return next2
-        })
-      }
+    const eng = customEngagements.find(e => e.id === id)
+    if (!eng) return
+    const next = cycle[eng.status] || eng.status
+    logEvent('ENGAGEMENT_STATUS', `"${eng.title}" → ${next}`, 'engagements')
+    const saved = await apiUpdateEngagement(id, { ...eng, status: next })
+    if (saved) setCustomEngagements(prev => prev.map(e => e.id === id ? saved : e))
+    if (next === 'Completed') {
+      setPendingReports(prev => {
+        const pr = prev[id]
+        if (!pr?.title) return prev
+        const report = {
+          id: `r${Date.now()}`,
+          clientId: eng.clientId,
+          engagementId: id,
+          title: pr.title,
+          type: pr.type,
+          date: new Date().toISOString().split('T')[0],
+          status: 'Draft',
+        }
+        apiCreateReport(report).then(r => { if (r) setReports(rs => [...rs, r]) })
+        logEvent('REPORT_ERSTELLT', `"${pr.title}" [${pr.type}] — auto-publiziert`, 'reports')
+        const next2 = { ...prev }
+        delete next2[id]
+        return next2
+      })
     }
-    const isCustom = customEngagements.some(e => e.id === id)
-    if (isCustom) {
-      setCustomEngagements(prev => prev.map(e => {
-        if (e.id !== id) return e
-        const next = cycle[e.status] || e.status
-        logEvent('ENGAGEMENT_STATUS', `"${e.title}" → ${next}`, 'engagements')
-        autoPublish(e.title, next)
-        return { ...e, status: next }
-      }))
-    } else {
-      const staticEng = ENGAGEMENTS.find(e => e.id === id)
-      if (!staticEng) return
-      const currentStatus = engStatusOverrides[id] || staticEng.status
-      const next = cycle[currentStatus] || currentStatus
-      logEvent('ENGAGEMENT_STATUS', `"${staticEng.title}" → ${next}`, 'engagements')
-      autoPublish(staticEng.title, next)
-      setEngStatusOverrides(prev => ({ ...prev, [id]: next }))
-    }
-  }, [customEngagements, engStatusOverrides, logEvent])
+  }, [customEngagements, logEvent])
 
-  const handleAddClient = useCallback((c) => {
-    setClients(prev => {
-      const next = [...prev, c]
-      localStorage.setItem('holysec_clients', JSON.stringify(next))
-      return next
-    })
+  const handleAddClient = useCallback(async (c) => {
+    const saved = await apiCreateClient(c)
+    if (saved) setClients(prev => [...prev, saved])
     logEvent('CLIENT_ERSTELLT', `"${c.name}" [${c.industry}]`, 'clients')
   }, [logEvent])
 
-  const handleEditClient = useCallback((c) => {
-    setClients(prev => {
-      const next = prev.map(x => x.id === c.id ? c : x)
-      localStorage.setItem('holysec_clients', JSON.stringify(next))
-      return next
-    })
+  const handleEditClient = useCallback(async (c) => {
+    const saved = await apiUpdateClient(c.id, c)
+    if (saved) setClients(prev => prev.map(x => x.id === c.id ? saved : x))
     logEvent('CLIENT_BEARBEITET', `"${c.name}"`, 'clients')
   }, [logEvent])
 
-  const handleDeleteClient = useCallback((id) => {
-    setClients(prev => {
-      const next = prev.filter(x => x.id !== id)
-      localStorage.setItem('holysec_clients', JSON.stringify(next))
-      return next
-    })
+  const handleDeleteClient = useCallback(async (id) => {
+    await apiDeleteClient(id)
+    setClients(prev => prev.filter(x => x.id !== id))
     logEvent('CLIENT_GELÖSCHT', `ID: ${id}`, 'clients')
   }, [logEvent])
 
@@ -6186,12 +6134,12 @@ export default function App() {
     logEvent('ZEITERFASSUNG_START', `Timer gestartet`, 'time')
   }, [currentUser, activeTimer, logEvent])
 
-  const handleClockOut = useCallback(() => {
+  const handleClockOut = useCallback(async () => {
     if (!activeTimer) return
     const end = Date.now()
     const now = new Date(end)
     const duration = Math.floor((end - activeTimer.start) / 1000)
-    setTimeEntries(prev => [...prev, {
+    const entry = {
       id: `te${end}`,
       userId: activeTimer.userId,
       userName: activeTimer.userName,
@@ -6199,7 +6147,9 @@ export default function App() {
       start: new Date(activeTimer.start).toTimeString().slice(0, 5),
       end: now.toTimeString().slice(0, 5),
       duration,
-    }])
+    }
+    const saved = await apiCreateTimeEntry(entry)
+    if (saved) setTimeEntries(prev => [...prev, saved])
     setActiveTimer(null)
     logEvent('ZEITERFASSUNG_STOP', `Dauer: ${formatDurationShort(duration)}`, 'time')
   }, [activeTimer, logEvent])
@@ -6207,8 +6157,6 @@ export default function App() {
   const handleAuditLogDownload = useCallback((what) => logEvent('PDF_EXPORT', what, 'download'), [logEvent])
   const handleClearAuditLogs = useCallback(() => {
     setAuditLogs([])
-    localStorage.removeItem('holysec_audit_logs')
-    apiDelete('holysec_audit_logs')
   }, [])
 
   const handleClientClick = useCallback((id) => { setSelectedClientId(id); setPage('client-detail') }, [])
@@ -6216,24 +6164,10 @@ export default function App() {
   const handleEngDetailClick = useCallback((id) => { setSelectedEngId(id); setPage('eng-detail') }, [])
   const handleBackToEngagements = useCallback(() => { setSelectedEngId(null); setPage('engagements') }, [])
 
-  const allEngagements = useMemo(() => [
-    ...ENGAGEMENTS
-      .filter(e => !engStatusOverrides[`_del_${e.id}`])
-      .map(e => {
-        const extra = engDataOverrides[e.id] || {}
-        const status = engStatusOverrides[e.id] ? { status: engStatusOverrides[e.id] } : {}
-        return { ...e, ...extra, ...status }
-      }),
-    ...customEngagements,
-  ], [customEngagements, engStatusOverrides, engDataOverrides])
-  const allFindings = useMemo(() => [...FINDINGS, ...customFindings]
-    .filter(f => !deletedFindingIds.has(f.id))
-    .map(f => findingEdits[f.id] ? findingEdits[f.id] : f),
-    [customFindings, deletedFindingIds, findingEdits])
+  const allEngagements = customEngagements
+  const allFindings = customFindings
 
-  const allUsersAuth = useMemo(() => [...USERS_AUTH, ...customUsersAuth], [customUsersAuth])
-
-  if (!currentUser) return <LoginPage onLogin={handleLogin} darkMode={darkMode} onToggleDark={() => setDarkMode(v => !v)} usersAuth={allUsersAuth} />
+  if (!currentUser) return <LoginPage onLogin={handleLogin} darkMode={darkMode} onToggleDark={() => setDarkMode(v => !v)} />
 
   const titleInfo = PAGE_TITLES[page] || PAGE_TITLES['dashboard']
 
@@ -6264,17 +6198,17 @@ export default function App() {
         <main className={`flex-1 relative ${page === 'map' ? 'overflow-hidden' : 'overflow-y-auto overflow-x-hidden'}`}>
           {page === 'dashboard'        && <Dashboard onClientClick={handleClientClick} clients={clients} currentUser={currentUser} assignments={assignments} findings={allFindings} engagements={allEngagements} onNav={handleNav} tipsLang={tipsLang} />}
           {page === 'client-radar'     && <ClientRadar onClientClick={handleClientClick} currentUser={currentUser} assignments={assignments} clients={clients} tipsLang={tipsLang} />}
-          {page === 'client-manager'   && <ClientList clients={clients} onClientClick={handleClientClick} currentUser={currentUser} assignments={assignments} onAdd={handleAddClient} onEdit={handleEditClient} onDelete={handleDeleteClient} defaultStatus={pageOpts.status} tipsLang={tipsLang} />}
+          {page === 'client-manager'   && <ClientList clients={clients} engagements={allEngagements} onClientClick={handleClientClick} currentUser={currentUser} assignments={assignments} onAdd={handleAddClient} onEdit={handleEditClient} onDelete={handleDeleteClient} defaultStatus={pageOpts.status} tipsLang={tipsLang} />}
           {/* Karte immer gemountet — Leaflet + Tiles bleiben nach Login im Hintergrund geladen */}
           <div style={page === 'map' ? { height: '100%' } : { position: 'absolute', inset: 0, opacity: 0, pointerEvents: 'none', zIndex: -1 }}>
             {page === 'map' && <ClientMapPage clients={clients} darkMode={darkMode} onClientClick={handleClientClick} />}
           </div>
-          {page === 'client-detail'    && selectedClientId && <ClientDetail clientId={selectedClientId} onBack={handleBackToClients} clients={clients} tipsLang={tipsLang} uiLang={uiLang} onNav={handleNav} />}
+          {page === 'client-detail'    && selectedClientId && <ClientDetail clientId={selectedClientId} onBack={handleBackToClients} clients={clients} findings={allFindings} engagements={allEngagements} reports={reports} tipsLang={tipsLang} uiLang={uiLang} onNav={handleNav} />}
           {page === 'findings'         && <FindingsTracker currentUser={currentUser} assignments={assignments} findings={allFindings} onAddFinding={handleAddFinding} onEditFinding={handleEditFinding} onDeleteFinding={handleDeleteFinding} clients={clients} teamMembers={teamMembers} engagements={allEngagements} onSendReminder={handleSendReminder} defaultSeverity={pageOpts.severity} defaultStatus={pageOpts.status} defaultClientId={pageOpts.clientId || 'All'} defaultFindingId={pageOpts.findingId || null} tipsLang={tipsLang} />}
           {page === 'engagements'      && <EngagementPlanner teamMembers={teamMembers} assignments={assignments} onAssign={handleAssign} currentUser={currentUser} groups={engagementGroups} engagements={allEngagements} onAddEngagement={handleAddEngagement} onStatusChange={handleEngStatusChange} onEdit={handleEditEngagement} onDelete={handleDeleteEngagement} clients={clients} defaultStatus={pageOpts.status} defaultClientId={pageOpts.clientId || null} tipsLang={tipsLang} uiLang={uiLang} pendingReports={pendingReports} onEngDetail={handleEngDetailClick} />}
           {page === 'eng-detail'       && selectedEngId && <EngagementDetail engagementId={selectedEngId} onBack={handleBackToEngagements} clients={clients} teamMembers={teamMembers} assignments={assignments} engagements={allEngagements} pendingReports={pendingReports} onSetPendingReport={handleSetPendingReport} currentUser={currentUser} onEdit={handleEditEngagement} onDelete={handleDeleteEngagement} uiLang={uiLang} />}
-          {page === 'eng-groups'       && <EngagementGroupsPage groups={engagementGroups} onAdd={handleAddGroup} onEdit={handleEditGroup} onDelete={handleDeleteGroup} teamMembers={teamMembers} currentUser={currentUser} />}
-          {page === 'reports'          && <ReportingCenter reports={reports} onStatusChange={handleReportStatusChange} onAdd={handleAddReport} currentUser={currentUser} assignments={assignments} onAuditLog={handleAuditLogDownload} tipsLang={tipsLang} />}
+          {page === 'eng-groups'       && <EngagementGroupsPage groups={engagementGroups} engagements={allEngagements} onAdd={handleAddGroup} onEdit={handleEditGroup} onDelete={handleDeleteGroup} teamMembers={teamMembers} currentUser={currentUser} />}
+          {page === 'reports'          && <ReportingCenter reports={reports} onStatusChange={handleReportStatusChange} onAdd={handleAddReport} currentUser={currentUser} assignments={assignments} onAuditLog={handleAuditLogDownload} tipsLang={tipsLang} clients={clients} engagements={allEngagements} findings={allFindings} />}
           {page === 'team'             && <TeamPage members={teamMembers} currentUser={currentUser} onAdd={handleAddMember} onRemove={handleRemoveMember} assignments={assignments} engagements={allEngagements} userPresence={userPresence} timeEntries={timeEntries} onAuditLog={handleAuditLogDownload} uiLang={uiLang} />}
           {page === 'user-management'  && currentUser?.role === 'Admin' && (
             <div className="p-3 lg:p-6 max-w-5xl">
