@@ -5300,6 +5300,7 @@ function ClientMapPage({ clients = [], darkMode = true, onClientClick }) {
       zoom: 6,
       zoomControl: true,
       maxZoom: 14,
+      closePopupOnClick: false,
       wheelPxPerZoomLevel: 200,
       keepBuffer: 4,
       boxZoom: false,
@@ -5407,6 +5408,7 @@ function ClientMapPage({ clients = [], darkMode = true, onClientClick }) {
 
       const pos    = getJitter(c.id, c.lat, c.lng)
       const marker = L.marker([pos.lat, pos.lng], { icon })
+      marker.on('click', e => L.DomEvent.stopPropagation(e))
 
       const bg     = darkMode ? '#0f172a' : '#ffffff'
       const bd     = darkMode ? '#1e293b' : '#e2e8f0'
@@ -5437,12 +5439,14 @@ function ClientMapPage({ clients = [], darkMode = true, onClientClick }) {
             onmouseout="this.style.opacity='1'"
           >&#8594; Details anzeigen</button>
         </div>
-      `, { className: 'holysec-popup' })
+      `, { className: 'holysec-popup', autoClose: false, closeOnClick: false })
 
       clusterGroup.addLayer(marker)
     })
 
     map.addLayer(clusterGroup)
+
+    map.on('click', () => map.closePopup())
 
     map.on('popupopen', (e) => {
       const btn = e.popup.getElement()?.querySelector('.map-detail-btn')
