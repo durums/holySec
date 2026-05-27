@@ -1613,7 +1613,7 @@ function ClientList({ clients: allClients = [], engagements: allEngagements = []
 
 // ─── CLIENT MINI MAP ─────────────────────────────────────────────────────────
 
-function ClientMiniMap({ lat, lng, darkMode = true }) {
+function ClientMiniMap({ lat, lng, city, darkMode = true }) {
   const mapDivRef = useRef(null)
   const mapRef    = useRef(null)
 
@@ -1656,14 +1656,36 @@ function ClientMiniMap({ lat, lng, darkMode = true }) {
 
   return (
     <Panel className="overflow-hidden">
-      <div className={`flex items-center justify-between px-4 py-2.5 border-b ${darkMode ? 'border-[#1e293b]' : 'border-gray-200'}`}>
-        <div className="flex items-center gap-2">
-          <Map size={12} className="text-cyan-400" />
-          <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">Standort</span>
+      <div className="flex">
+        {/* Quadratische Karte */}
+        <div ref={mapDivRef} className="w-48 h-48 shrink-0" />
+
+        {/* Standort-Info */}
+        <div className={`flex-1 flex flex-col justify-center gap-3 px-5 border-l ${darkMode ? 'border-[#1e293b]' : 'border-gray-200'}`}>
+          <div className="flex items-center gap-2">
+            <Map size={13} className="text-cyan-400 shrink-0" />
+            <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">Standort</span>
+          </div>
+
+          {city && (
+            <div>
+              <div className="text-[10px] font-mono text-slate-600 uppercase tracking-wider mb-0.5">Stadt</div>
+              <div className="text-sm font-mono font-semibold text-slate-100">{city}</div>
+            </div>
+          )}
+
+          <div>
+            <div className="text-[10px] font-mono text-slate-600 uppercase tracking-wider mb-0.5">Koordinaten</div>
+            <div className="text-xs font-mono text-cyan-400 tabular-nums">{lat.toFixed(4)}° N</div>
+            <div className="text-xs font-mono text-cyan-400 tabular-nums">{lng.toFixed(4)}° E</div>
+          </div>
+
+          <div>
+            <div className="text-[10px] font-mono text-slate-600 uppercase tracking-wider mb-0.5">Zoom</div>
+            <div className="text-xs font-mono text-slate-400">Stadtebene (13)</div>
+          </div>
         </div>
-        <span className="text-[10px] font-mono text-slate-600 tabular-nums">{lat.toFixed(4)}, {lng.toFixed(4)}</span>
       </div>
-      <div ref={mapDivRef} className="h-52 w-full" />
     </Panel>
   )
 }
@@ -1808,7 +1830,7 @@ function ClientDetail({ clientId, onBack, clients: allClients = [], findings: al
               </Panel>
             </div>
 
-            <ClientMiniMap lat={client.lat} lng={client.lng} darkMode={darkMode} />
+            <ClientMiniMap lat={client.lat} lng={client.lng} city={client.city} darkMode={darkMode} />
           </div>
         )
       })()}
