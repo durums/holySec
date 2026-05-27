@@ -1672,10 +1672,10 @@ function ClientMiniMap({ lat, lng, darkMode = true }) {
   const state   = geo?.state || null
   const country = geo?.country || null
 
-  const Row = ({ label, value }) => value ? (
-    <div>
+  const Field = ({ label, value }) => value ? (
+    <div className="min-w-0">
       <div className="text-[10px] font-mono text-slate-600 uppercase tracking-wider mb-0.5">{label}</div>
-      <div className="text-xs font-mono text-slate-200">{value}</div>
+      <div className="text-xs font-mono text-slate-200 truncate">{value}</div>
     </div>
   ) : null
 
@@ -1683,19 +1683,21 @@ function ClientMiniMap({ lat, lng, darkMode = true }) {
     <Panel className="overflow-hidden">
       <div className="flex">
         <div ref={mapDivRef} className="w-48 h-48 shrink-0" />
-        <div className={`flex-1 flex flex-col justify-center gap-3 px-5 border-l ${darkMode ? 'border-[#1e293b]' : 'border-gray-200'}`}>
-          <div className="flex items-center gap-2">
+        <div className={`flex-1 px-5 py-4 border-l flex flex-col justify-center gap-2 ${darkMode ? 'border-[#1e293b]' : 'border-gray-200'}`}>
+          <div className="flex items-center gap-2 mb-1">
             <Map size={13} className="text-cyan-400 shrink-0" />
             <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">Standort</span>
           </div>
-          <Row label="Land" value={country} />
-          <Row label="Bundesland" value={state} />
-          <Row label="Stadt" value={city} />
-          <Row label="Straße" value={road} />
-          <Row label="PLZ" value={postcode} />
-          <div>
-            <div className="text-[10px] font-mono text-slate-600 uppercase tracking-wider mb-0.5">Koordinaten</div>
-            <div className="text-xs font-mono text-cyan-400 tabular-nums">{lat.toFixed(4)}° N · {lng.toFixed(4)}° E</div>
+          <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+            <Field label="Land"       value={country}  />
+            <Field label="Bundesland" value={state}    />
+            <Field label="Stadt"      value={city}     />
+            <Field label="PLZ"        value={postcode} />
+            <Field label="Straße"     value={road}     />
+            <div className="min-w-0">
+              <div className="text-[10px] font-mono text-slate-600 uppercase tracking-wider mb-0.5">Koordinaten</div>
+              <div className="text-xs font-mono text-cyan-400 tabular-nums">{lat.toFixed(4)}° N · {lng.toFixed(4)}° E</div>
+            </div>
           </div>
         </div>
       </div>
@@ -5453,26 +5455,9 @@ function ClientMapPage({ clients = [], darkMode = true, onClientClick }) {
       if (flybackTimerRef.current !== null) {
         clearTimeout(flybackTimerRef.current)
         flybackTimerRef.current = null
-      } else {
-        savedViewRef.current = { center: map.getCenter(), zoom: map.getZoom() }
-      }
-      const latlng = e.popup.getLatLng()
-      if (latlng) {
-        const targetZoom = Math.max(map.getZoom(), Math.min(map.getZoom() + 2, 12))
-        // panTo statt flyTo — keine Zoom-Animation die popupclose auslösen könnte
-        map.panTo(latlng, { animate: true, duration: 0.3 })
       }
     })
 
-    map.on('popupclose', () => {
-      if (!savedViewRef.current) return
-      const saved = { ...savedViewRef.current }
-      flybackTimerRef.current = setTimeout(() => {
-        flybackTimerRef.current = null
-        savedViewRef.current = null
-        if (mapRef.current) mapRef.current.flyTo(saved.center, saved.zoom, { duration: 0.5 })
-      }, 50)
-    })
 
     // Wächter: entfernt Leaflet-BoxZoom-Overlay sofort aus dem DOM
     const zoomBoxWatcher = new MutationObserver((mutations) => {
