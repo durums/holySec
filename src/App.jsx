@@ -5468,6 +5468,7 @@ function ClientMapPage({ clients = [], darkMode = true, onClientClick }) {
         const col    = CRITICALITY_COLOR[c.criticality] || CRITICALITY_COLOR.LOW
         const icon   = makeMarkerIcon(col, 1)
         const marker = L.marker(legEnd, { icon, zIndexOffset: 1000 })
+        marker._isSpider = true
         marker.on('click', e => L.DomEvent.stopPropagation(e))
         marker.bindPopup(makeSinglePopup(c), popupOpts)
         marker.addTo(map)
@@ -5510,16 +5511,19 @@ function ClientMapPage({ clients = [], darkMode = true, onClientClick }) {
           if (id && onClientClickRef.current) onClientClickRef.current(id)
         }
       })
+      const isSpider = e.popup._source?._isSpider === true
       if (flybackTimerRef.current !== null) {
         clearTimeout(flybackTimerRef.current)
         flybackTimerRef.current = null
-      } else {
+      } else if (!isSpider) {
         savedViewRef.current = { center: map.getCenter(), zoom: map.getZoom() }
       }
-      const latlng = e.popup.getLatLng()
-      if (latlng) {
-        const targetZoom = Math.min(map.getZoom() + 1, 12)
-        map.flyTo(latlng, targetZoom, { duration: 0.5 })
+      if (!isSpider) {
+        const latlng = e.popup.getLatLng()
+        if (latlng) {
+          const targetZoom = Math.min(map.getZoom() + 1, 12)
+          map.flyTo(latlng, targetZoom, { duration: 0.5 })
+        }
       }
     })
 
