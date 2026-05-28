@@ -1022,6 +1022,11 @@ function TopBar({ title, subtitle, currentUser, assignments, clients: allClients
     setReadNotifs(next)
   }
 
+  // Alle sichtbaren Notifications als gelesen markieren, sobald Panel geöffnet wird
+  useEffect(() => {
+    if (showNotifs && notifItems.length > 0) markAllRead()
+  }, [showNotifs]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const presenceCfg = {
     online: { dot: 'bg-green-400', text: 'text-green-400', label: 'ONLINE', ping: true },
     away:   { dot: 'bg-yellow-400', text: 'text-yellow-400', label: 'ABWESEND', ping: false },
@@ -1477,7 +1482,7 @@ function ClientList({ clients: allClients = [], engagements: allEngagements = []
         </div>
         {isAdmin && (
           <button onClick={() => { setEditingClient(null); setShowModal(true) }}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-500/10 border border-cyan-500/30 rounded text-xs font-mono text-cyan-400 hover:bg-cyan-500/20 transition-all">
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-500/20 border border-cyan-400/70 rounded text-xs font-mono text-cyan-300 hover:bg-cyan-500/30 hover:border-cyan-400 transition-all">
             <Plus size={13} /> Neuer Client
           </button>
         )}
@@ -2302,7 +2307,7 @@ function FindingsTracker({ currentUser, assignments, findings: allFindingsProp =
             <Filter size={12} className="text-slate-600" />
             {['All', 'CRITICAL', 'HIGH', 'MEDIUM', 'LOW'].map(s => (
               <button key={s} onClick={() => setSeverityFilter(s)}
-                className={`px-2.5 py-1 rounded text-[10px] font-mono border transition-all ${severityFilter === s ? 'border-slate-500/50 bg-slate-700/40 text-slate-300' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
+                className={`px-2.5 py-1 rounded text-[10px] font-mono border transition-all ${severityFilter === s ? 'border-slate-500/50 bg-slate-700/40 text-slate-300' : 'border-[#1e293b] text-slate-600 hover:text-slate-300 hover:border-slate-600'}`}>
                 {s}
               </button>
             ))}
@@ -2311,7 +2316,7 @@ function FindingsTracker({ currentUser, assignments, findings: allFindingsProp =
           <div className="flex items-center gap-1 flex-wrap">
             {['All', 'Open', 'In Remediation', 'Closed'].map(s => (
               <button key={s} onClick={() => setStatusFilter(s)}
-                className={`px-2.5 py-1 rounded text-[10px] font-mono border transition-all ${statusFilter === s ? 'border-slate-500/50 bg-slate-700/40 text-slate-300' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
+                className={`px-2.5 py-1 rounded text-[10px] font-mono border transition-all ${statusFilter === s ? 'border-slate-500/50 bg-slate-700/40 text-slate-300' : 'border-[#1e293b] text-slate-600 hover:text-slate-300 hover:border-slate-600'}`}>
                 {s}
               </button>
             ))}
@@ -2323,7 +2328,7 @@ function FindingsTracker({ currentUser, assignments, findings: allFindingsProp =
             </button>
             {(currentUser?.role === 'Admin' || currentUser?.role === 'Senior Pentester' || currentUser?.role === 'Pentester') && (
               <button onClick={() => setShowNewModal(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-red-500/40 bg-red-500/10 text-xs font-mono text-red-400 hover:bg-red-500/20 transition-all">
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-red-400/70 bg-red-500/20 text-xs font-mono text-red-300 hover:bg-red-500/30 hover:border-red-400 transition-all">
                 <Plus size={12} /> Finding
               </button>
             )}
@@ -2818,33 +2823,36 @@ function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, curre
   return (
     <div className="p-3 lg:p-6 space-y-4">
       <div className="flex flex-col gap-2">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex gap-1">
-            {['timeline', 'list'].map(v => (
-              <button key={v} onClick={() => setView(v)}
-                className={`px-3 py-1.5 rounded text-xs font-mono capitalize border transition-all ${view === v ? 'border-slate-500/50 bg-slate-700/40 text-slate-300' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
-                {v}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Status-Filter */}
+          <div className="flex items-center gap-1 flex-wrap">
+            <button onClick={() => setMyOnly(v => !v)}
+              className={`px-2.5 py-1 rounded text-[10px] font-mono border transition-all ${myOnly ? 'border-purple-500/50 bg-purple-500/10 text-purple-400' : 'border-[#1e293b] text-slate-600 hover:text-slate-300 hover:border-slate-600'}`}>
+              ★ Meine
+            </button>
+            {['All', 'Active', 'Planned', 'Completed', 'On Hold'].map(s => (
+              <button key={s} onClick={() => setStatusFilter(s)}
+                className={`px-2.5 py-1 rounded text-[10px] font-mono border transition-all ${statusFilter === s ? 'border-slate-500/50 bg-slate-700/40 text-slate-300' : 'border-[#1e293b] text-slate-600 hover:text-slate-300 hover:border-slate-600'}`}>
+                {s}
               </button>
             ))}
           </div>
-          {currentUser?.role === 'Admin' && (
-            <button onClick={() => setShowNewModal(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-cyan-500/40 bg-cyan-500/10 text-xs font-mono text-cyan-400 hover:bg-cyan-500/20 transition-all">
-              <Plus size={12} /> Erstellen
-            </button>
-          )}
-        </div>
-        <div className="flex items-center gap-1 flex-wrap">
-          <button onClick={() => setMyOnly(v => !v)}
-            className={`px-2.5 py-1 rounded text-[10px] font-mono border transition-all ${myOnly ? 'border-purple-500/50 bg-purple-500/10 text-purple-400' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
-            ★ Meine
-          </button>
-          {['All', 'Active', 'Planned', 'Completed', 'On Hold'].map(s => (
-            <button key={s} onClick={() => setStatusFilter(s)}
-              className={`px-2.5 py-1 rounded text-[10px] font-mono border transition-all ${statusFilter === s ? 'border-slate-500/50 bg-slate-700/40 text-slate-300' : 'border-[#1e293b] text-slate-500 hover:text-slate-300'}`}>
-              {s}
-            </button>
-          ))}
+
+          {/* View-Toggle + Erstellen */}
+          <div className="ml-auto flex items-center gap-1.5">
+            {['timeline', 'list'].map(v => (
+              <button key={v} onClick={() => setView(v)}
+                className={`px-2.5 py-1 rounded text-[10px] font-mono capitalize border transition-all ${view === v ? 'border-slate-500/50 bg-slate-700/40 text-slate-300' : 'border-[#1e293b] text-slate-600 hover:text-slate-300 hover:border-slate-600'}`}>
+                {v}
+              </button>
+            ))}
+            {currentUser?.role === 'Admin' && (
+              <button onClick={() => setShowNewModal(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-cyan-400/70 bg-cyan-500/20 text-xs font-mono text-cyan-300 hover:bg-cyan-500/30 hover:border-cyan-400 transition-all">
+                <Plus size={12} /> Erstellen
+              </button>
+            )}
+          </div>
         </div>
         <p className="text-[9px] font-mono text-slate-700">Aktive Phasen sind anklickbar — Notizen & Details einsehbar für zugewiesene Mitglieder und Admins.</p>
       </div>
@@ -3444,7 +3452,7 @@ function ReportingCenter({ reports, onStatusChange, onAdd, currentUser, assignme
           </select>
           {currentUser?.role !== 'Junior Pentester' && (
             <button onClick={() => setShowNewReport(true)}
-              className="flex items-center gap-2 px-3 py-1.5 bg-cyan-500/10 border border-cyan-500/30 rounded text-xs font-mono text-cyan-400 hover:bg-cyan-500/20 transition-all">
+              className="flex items-center gap-2 px-3 py-1.5 bg-cyan-500/20 border border-cyan-400/70 rounded text-xs font-mono text-cyan-300 hover:bg-cyan-500/30 hover:border-cyan-400 transition-all">
               <Plus size={12} /> New Report
             </button>
           )}
@@ -3700,7 +3708,7 @@ function UserManagementSection({ members, currentUser, onAdd, onRemove, onEdit }
       <Panel>
         <PanelHeader title="Benutzerverwaltung" subtitle={`${members.length} Benutzer im System`}>
           <button onClick={() => setShowAdd(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-500/10 border border-cyan-500/30 rounded text-xs font-mono text-cyan-400 hover:bg-cyan-500/20 transition-all">
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-500/20 border border-cyan-400/70 rounded text-xs font-mono text-cyan-300 hover:bg-cyan-500/30 hover:border-cyan-400 transition-all">
             <UserPlus size={12} /> Benutzer anlegen
           </button>
         </PanelHeader>
@@ -4011,7 +4019,7 @@ function TimeTrackingPage({ timeEntries, currentUser, members, uiLang = 'en' }) 
             <button
               onClick={() => exportTargets.forEach((m, i) => setTimeout(() => exportTimePDF(m, timeEntries, exportRange), i * 300))}
               disabled={exportTargets.length === 0}
-              className="flex items-center gap-2 px-4 py-2 bg-cyan-500/10 border border-cyan-500/30 rounded text-xs font-mono text-cyan-400 hover:bg-cyan-500/20 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
+              className="flex items-center gap-2 px-4 py-2 bg-cyan-500/20 border border-cyan-400/70 rounded text-xs font-mono text-cyan-300 hover:bg-cyan-500/30 hover:border-cyan-400 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
               <Download size={13} />
               {exportMemberId === 'all'
                 ? `${exportTargets.length} PDF${exportTargets.length !== 1 ? 's' : ''} generieren`
@@ -4875,7 +4883,7 @@ function TeamPage({ members, currentUser, onAdd, onRemove, assignments, engageme
           </div>
           {isAdmin && (
             <button onClick={() => setShowAdd(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-500/10 border border-cyan-500/30 rounded text-xs font-mono text-cyan-400 hover:bg-cyan-500/20 transition-all">
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-500/20 border border-cyan-400/70 rounded text-xs font-mono text-cyan-300 hover:bg-cyan-500/30 hover:border-cyan-400 transition-all">
               <UserPlus size={12} /> Hinzufügen
             </button>
           )}
@@ -5092,7 +5100,7 @@ function MemberTimeDetailModal({ member, timeEntries, onClose, onExport, uiLang 
           </div>
           <div className="flex items-center gap-2">
             <button onClick={exportPDF}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-500/10 border border-cyan-500/30 rounded text-xs font-mono text-cyan-400 hover:bg-cyan-500/20 transition-all">
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-500/20 border border-cyan-400/70 rounded text-xs font-mono text-cyan-300 hover:bg-cyan-500/30 hover:border-cyan-400 transition-all">
               <Download size={12} /> PDF exportieren
             </button>
             <button onClick={onClose} className="p-1.5 rounded text-slate-500 hover:text-slate-200"><X size={14} /></button>
@@ -5514,8 +5522,8 @@ function ClientMapPage({ clients = [], darkMode = true, onClientClick }) {
   }, [visible, darkMode, mapStyle])
 
   const chipBase   = darkMode
-    ? 'border-[#1e293b] text-slate-500 hover:text-slate-300 hover:border-slate-600'
-    : 'border-gray-200 text-gray-500 hover:text-gray-700 hover:border-gray-400'
+    ? 'border-[#1e293b] text-slate-600 hover:text-slate-300 hover:border-slate-600'
+    : 'border-gray-200 text-gray-400 hover:text-gray-700 hover:border-gray-400'
   const chipActive = darkMode
     ? 'border-slate-500/50 bg-slate-700/40 text-slate-300'
     : 'border-slate-400/60 bg-slate-100 text-slate-700'
@@ -5611,7 +5619,7 @@ function EngagementGroupsPage({ groups, onAdd, onDelete, onEdit, teamMembers, cu
         </div>
         {canManage && (
           <button onClick={openNew}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-500/10 border border-cyan-500/30 rounded text-xs font-mono text-cyan-400 hover:bg-cyan-500/20 transition-all">
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-500/20 border border-cyan-400/70 rounded text-xs font-mono text-cyan-300 hover:bg-cyan-500/30 hover:border-cyan-400 transition-all">
             <Plus size={12} /> Gruppe erstellen
           </button>
         )}
