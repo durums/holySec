@@ -33,6 +33,28 @@
       ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
       ::-webkit-scrollbar-thumb:hover { background: #06b6d4; }
 
+      /* ── Light Mode Button Fixes ── */
+      body.light-mode .text-cyan-300 { color: #0e7490 !important; }
+      body.light-mode .text-cyan-400 { color: #0284c7 !important; }
+      body.light-mode .text-red-300  { color: #dc2626 !important; }
+      body.light-mode .border-cyan-400\/70 { border-color: rgba(8,145,178,0.75) !important; }
+      body.light-mode .border-red-400\/70  { border-color: rgba(220,38,38,0.75) !important; }
+      body.light-mode .bg-cyan-500\/20 { background-color: rgba(6,182,212,0.10) !important; }
+      body.light-mode .bg-red-500\/20  { background-color: rgba(239,68,68,0.10) !important; }
+
+      /* ── Map Marker Pulse Animation ── */
+      @keyframes marker-ring-pulse {
+        0%   { transform: scale(0.85); opacity: 0.7; }
+        50%  { transform: scale(2.4);  opacity: 0;   }
+        100% { transform: scale(0.85); opacity: 0;   }
+      }
+      .hs-marker-pulse {
+        position: absolute; inset: 0; border-radius: 50%;
+        border: 2px solid currentColor;
+        animation: marker-ring-pulse 3s ease-out infinite;
+        will-change: transform, opacity;
+      }
+
       /* ── Cyber Login Animations ── */
       @keyframes grid-drift {
         0%   { transform: translate(0, 0); }

@@ -18,12 +18,13 @@ function parseClient(row) {
 
 function parseFinding(row) {
   if (!row) return null
-  return { ...row, clientId: row.client_id, engagementId: row.engagement_id }
+  const cvssVector = row.cvss_vector ? p(row.cvss_vector) : null
+  return { ...row, clientId: row.client_id, engagementId: row.engagement_id, discoveredBy: row.discovered_by, cvssVector, note: row.note || '', dueDate: row.due_date || '' }
 }
 
 function parseEngagement(row) {
   if (!row) return null
-  return { ...row, clientId: row.client_id, phases: p(row.phases), assignedTo: p(row.assigned_to) }
+  return { ...row, clientId: row.client_id, phases: p(row.phases), assignedTo: p(row.assigned_to), scope: row.scope || '', methodology: row.methodology || 'Black Box', contact: row.contact || '', phaseChecks: p(row.phase_checks || '{}'), phaseNotes: p(row.phase_notes || '{}') }
 }
 
 function parseReport(row) {
@@ -188,6 +189,32 @@ async function init() {
       created_at BIGINT DEFAULT (UNIX_TIMESTAMP())
     )
   `)
+
+  await pool.execute(`ALTER TABLE engagements ADD COLUMN IF NOT EXISTS scope TEXT DEFAULT ''`)
+  await pool.execute(`ALTER TABLE engagements ADD COLUMN IF NOT EXISTS methodology VARCHAR(50) DEFAULT 'Black Box'`)
+  await pool.execute(`ALTER TABLE engagements ADD COLUMN IF NOT EXISTS contact TEXT DEFAULT ''`)
+  await pool.execute(`ALTER TABLE engagements ADD COLUMN IF NOT EXISTS phase_checks TEXT DEFAULT '{}'`)
+  await pool.execute(`ALTER TABLE engagements ADD COLUMN IF NOT EXISTS phase_notes TEXT DEFAULT '{}'`)
+  await pool.execute(`ALTER TABLE findings ADD COLUMN IF NOT EXISTS cvss_vector TEXT DEFAULT ''`)
+  await pool.execute(`ALTER TABLE findings ADD COLUMN IF NOT EXISTS note TEXT DEFAULT ''`)
+  await pool.execute(`ALTER TABLE findings ADD COLUMN IF NOT EXISTS due_date VARCHAR(20) DEFAULT ''`)
+  await pool.execute(`ALTER TABLE time_entries ADD COLUMN IF NOT EXISTS engagement_id VARCHAR(50) DEFAULT NULL`)
+  await pool.execute(`ALTER TABLE time_entries ADD COLUMN IF NOT EXISTS client_id VARCHAR(50) DEFAULT NULL`)
+
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS finding_attachments (
+      id            VARCHAR(50) PRIMARY KEY,
+      finding_id    VARCHAR(50),
+      filename      VARCHAR(255) NOT NULL,
+      original_name TEXT DEFAULT '',
+      mime_type     VARCHAR(100) DEFAULT '',
+      size_bytes    INT DEFAULT 0,
+      uploaded_by   VARCHAR(50),
+      created_at    BIGINT DEFAULT (UNIX_TIMESTAMP()),
+      FOREIGN KEY (finding_id)  REFERENCES findings(id) ON DELETE CASCADE,
+      FOREIGN KEY (uploaded_by) REFERENCES users(id)    ON DELETE SET NULL
+    )
+  `)
 }
 
 const kv = {
@@ -279,16 +306,16 @@ const findings = {
     const [rows] = await pool.execute('SELECT * FROM findings WHERE client_id = ? ORDER BY created_at DESC', [clientId])
     return rows.map(parseFinding)
   },
-  async insert({ id, clientId, engagementId, discoveredBy, title, cve, cvss, severity, category, status, date, description, remediation }) {
+  async insert({ id, clientId, engagementId, discoveredBy, title, cve, cvss, cvssVector, severity, category, status, date, description, remediation, note, dueDate }) {
     await pool.execute(
-      'INSERT INTO findings (id, client_id, engagement_id, discovered_by, title, cve, cvss, severity, category, status, date, description, remediation) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [id, clientId||null, engagementId||null, discoveredBy||null, title, cve||null, cvss||0, severity||'MEDIUM', category||'Other', status||'Open', date||'', description||'', remediation||'']
+      'INSERT INTO findings (id, client_id, engagement_id, discovered_by, title, cve, cvss, cvss_vector, severity, category, status, date, description, remediation, note, due_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [id, clientId||null, engagementId||null, discoveredBy||null, title, cve||null, cvss||0, cvssVector||'', severity||'MEDIUM', category||'Other', status||'Open', date||'', description||'', remediation||'', note||'', dueDate||'']
     )
   },
-  async update({ id, clientId, engagementId, title, cve, cvss, severity, category, status, date, description, remediation }) {
+  async update({ id, clientId, engagementId, title, cve, cvss, cvssVector, severity, category, status, date, description, remediation, note, dueDate }) {
     await pool.execute(
-      'UPDATE findings SET client_id=?, engagement_id=?, title=?, cve=?, cvss=?, severity=?, category=?, status=?, date=?, description=?, remediation=?, updated_at=UNIX_TIMESTAMP() WHERE id=?',
-      [clientId||null, engagementId||null, title, cve||null, cvss||0, severity||'MEDIUM', category||'Other', status||'Open', date||'', description||'', remediation||'', id]
+      'UPDATE findings SET client_id=?, engagement_id=?, title=?, cve=?, cvss=?, cvss_vector=?, severity=?, category=?, status=?, date=?, description=?, remediation=?, note=?, due_date=?, updated_at=UNIX_TIMESTAMP() WHERE id=?',
+      [clientId||null, engagementId||null, title, cve||null, cvss||0, cvssVector||'', severity||'MEDIUM', category||'Other', status||'Open', date||'', description||'', remediation||'', note||'', dueDate||'', id]
     )
   },
   async delete(id) {
@@ -305,16 +332,18 @@ const engagements = {
     const [rows] = await pool.execute('SELECT * FROM engagements WHERE id = ?', [id])
     return parseEngagement(rows[0] || null)
   },
-  async insert({ id, clientId, title, type, start, end, status, phases, lead, assignedTo }) {
+  async insert({ id, clientId, title, type, start, end, status, phases, lead, assignedTo, scope, methodology, contact, phaseChecks, phaseNotes }) {
+    const j = v => JSON.stringify(v ?? null)
     await pool.execute(
-      'INSERT INTO engagements (id, client_id, title, type, start, end, status, phases, lead, assigned_to) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [id, clientId||null, title, type||'Web', start||'', end||'', status||'Planned', phases||'[]', lead||'', assignedTo||'[]']
+      'INSERT INTO engagements (id, client_id, title, type, start, end, status, phases, lead, assigned_to, scope, methodology, contact, phase_checks, phase_notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [id, clientId||null, title, type||'Web', start||'', end||'', status||'Planned', phases||'[]', lead||'', assignedTo||'[]', scope||'', methodology||'Black Box', contact||'', j(phaseChecks||{}), j(phaseNotes||{})]
     )
   },
-  async update({ id, clientId, title, type, start, end, status, phases, lead, assignedTo }) {
+  async update({ id, clientId, title, type, start, end, status, phases, lead, assignedTo, scope, methodology, contact, phaseChecks, phaseNotes }) {
+    const j = v => JSON.stringify(v ?? null)
     await pool.execute(
-      'UPDATE engagements SET client_id=?, title=?, type=?, start=?, end=?, status=?, phases=?, lead=?, assigned_to=?, updated_at=UNIX_TIMESTAMP() WHERE id=?',
-      [clientId||null, title, type||'Web', start||'', end||'', status||'Planned', phases||'[]', lead||'', assignedTo||'[]', id]
+      'UPDATE engagements SET client_id=?, title=?, type=?, start=?, end=?, status=?, phases=?, lead=?, assigned_to=?, scope=?, methodology=?, contact=?, phase_checks=?, phase_notes=?, updated_at=UNIX_TIMESTAMP() WHERE id=?',
+      [clientId||null, title, type||'Web', start||'', end||'', status||'Planned', phases||'[]', lead||'', assignedTo||'[]', scope||'', methodology||'Black Box', contact||'', j(phaseChecks||{}), j(phaseNotes||{}), id]
     )
   },
   async delete(id) {
@@ -357,10 +386,10 @@ const timeEntries = {
     const [rows] = await pool.execute('SELECT * FROM time_entries WHERE user_id = ? ORDER BY date DESC', [userId])
     return rows
   },
-  async insert({ id, userId, userName, date, start, end, duration }) {
+  async insert({ id, userId, userName, date, start, end, duration, engagementId, clientId }) {
     await pool.execute(
-      'INSERT INTO time_entries (id, user_id, user_name, date, start, end, duration) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [id, userId||null, userName||'', date, start, end, duration||0]
+      'INSERT INTO time_entries (id, user_id, user_name, date, start, end, duration, engagement_id, client_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [id, userId||null, userName||'', date, start, end, duration||0, engagementId||null, clientId||null]
     )
   },
   async byIdRaw(id) {
@@ -411,4 +440,24 @@ const auditLogs = {
   },
 }
 
-module.exports = { init, kv, users, clients, findings, engagements, reports, timeEntries, engGroups, auditLogs, j, p, getPool: () => pool }
+const findingAttachments = {
+  async byFinding(findingId) {
+    const [rows] = await pool.execute('SELECT * FROM finding_attachments WHERE finding_id = ? ORDER BY created_at', [findingId])
+    return rows
+  },
+  async byId(id) {
+    const [rows] = await pool.execute('SELECT * FROM finding_attachments WHERE id = ?', [id])
+    return rows[0] || null
+  },
+  async insert({ id, findingId, filename, originalName, mimeType, sizeBytes, uploadedBy }) {
+    await pool.execute(
+      'INSERT INTO finding_attachments (id, finding_id, filename, original_name, mime_type, size_bytes, uploaded_by) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [id, findingId||null, filename, originalName||'', mimeType||'', sizeBytes||0, uploadedBy||null]
+    )
+  },
+  async delete(id) {
+    await pool.execute('DELETE FROM finding_attachments WHERE id = ?', [id])
+  },
+}
+
+module.exports = { init, kv, users, clients, findings, findingAttachments, engagements, reports, timeEntries, engGroups, auditLogs, j, p, getPool: () => pool }

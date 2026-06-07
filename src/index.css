@@ -84,60 +84,97 @@
   transition: transform .3s ease-out, opacity .3s ease-in;
 }
 
-/* ── Light Mode ────────────────────────────────────────────────────────────── */
+/* ── Light Mode (neutrales Grau-Design) ───────────────────────────────────── */
 
 body.light-mode {
-  background-color: #d0d8e4;
-  color: #0f172a;
+  background-color: #e8e9ec;
+  color: #1c1d20;
 }
 
-/* Haupt-Layout-Hintergrund */
+/* ── Hintergründe ─────────────────────────────────────────────────────────── */
+
+/* Haupt-Layout-Hintergrund & TopBar (sehr dunkles Schwarz → neutrales Seiten-Grau) */
 body.light-mode [class*="bg-[#0a0a0a]"] {
-  background-color: #d0d8e4 !important;
+  background-color: #e8e9ec !important;
 }
 
-/* Panel / Card / Sidebar / Modal-Hintergrund */
+/* Panel / Card / Modal-Hintergrund (dunkel-blau → helles Grau) */
 body.light-mode [class*="bg-[#0f172a]"] {
-  background-color: #e4eaf2 !important;
+  background-color: #f3f4f6 !important;
 }
 
-/* Inputs, Hover-States, innere Flächen */
+/* Sehr dunkle verschachtelte Flächen (z.B. Phasen-Detailbereich) */
+body.light-mode [class*="bg-[#080e1a]"] {
+  background-color: #dfe0e4 !important;
+}
+
+/* Innere Flächen & Inputs */
 body.light-mode [class*="bg-[#1e293b]"],
 body.light-mode [class*="bg-[#172033]"] {
-  background-color: #d8e0ea !important;
+  background-color: #ecedf0 !important;
 }
 
-/* Borders */
-body.light-mode [class*="border-[#1e293b]"] {
-  border-color: #b0bece !important;
-}
+/* Semi-transparente Hintergründe (Phase-Pills, aktive Elemente) */
+body.light-mode .bg-slate-800\/60 { background-color: rgba(220,221,226,0.7) !important; }
+body.light-mode .bg-slate-800\/40 { background-color: rgba(220,221,226,0.5) !important; }
+body.light-mode .bg-slate-800\/20 { background-color: rgba(220,221,226,0.35) !important; }
+body.light-mode .bg-slate-800\/10 { background-color: rgba(220,221,226,0.2) !important; }
 
-/* Text-Farben */
-body.light-mode .text-slate-100 { color: #0f172a !important; }
-body.light-mode .text-slate-200 { color: #1e293b !important; }
-body.light-mode .text-slate-300 { color: #2d3f55 !important; }
-body.light-mode .text-slate-400 { color: #3d5068 !important; }
-body.light-mode .text-slate-500 { color: #526880 !important; }
-body.light-mode .text-slate-600 { color: #7a90a8 !important; }
-body.light-mode .text-slate-700 { color: #8fa4bb !important; }
+/* ── Borders & Divider ────────────────────────────────────────────────────── */
 
-/* Hover-Effekte */
-body.light-mode .hover\:bg-slate-800\/20:hover { background-color: #c4ceda !important; }
-body.light-mode .hover\:bg-slate-800:hover     { background-color: #c4ceda !important; }
+body.light-mode [class*="border-[#1e293b]"] { border-color: #c8cace !important; }
+body.light-mode [class*="border-[#334155]"] { border-color: #b8bac0 !important; }
+body.light-mode [class*="border-[#0f172a]"] { border-color: #c8cace !important; }
+
+/* Divider in Tabellen und Listen */
+body.light-mode [class*="divide-[#1e293b]"] > * + * { border-color: #c8cace !important; }
+
+/* Avatar-Ringe */
+body.light-mode [class*="ring-[#0f172a]"] { --tw-ring-color: #c8cace !important; }
+body.light-mode [class*="ring-[#0a0a0a]"] { --tw-ring-color: #e8e9ec !important; }
+
+/* ── Text-Farben ──────────────────────────────────────────────────────────── */
+
+body.light-mode .text-slate-100 { color: #1c1d20 !important; }
+body.light-mode .text-slate-200 { color: #2d2e32 !important; }
+body.light-mode .text-slate-300 { color: #45464d !important; }
+body.light-mode .text-slate-400 { color: #5c5d66 !important; }
+body.light-mode .text-slate-500 { color: #7a7b84 !important; }
+body.light-mode .text-slate-600 { color: #9a9ba4 !important; }
+body.light-mode .text-slate-700 { color: #b4b6be !important; }
+
+/* Hover-Text (ohne Overrides wäre weißer Text auf hellem Grund unsichtbar) */
+body.light-mode .hover\:text-slate-100:hover { color: #1c1d20 !important; }
+body.light-mode .hover\:text-slate-200:hover { color: #2d2e32 !important; }
+body.light-mode .hover\:text-slate-300:hover { color: #45464d !important; }
+
+/* Placeholder */
+body.light-mode .placeholder-slate-700::placeholder { color: #9a9ba4 !important; }
+
+/* ── Hover-Hintergründe ───────────────────────────────────────────────────── */
+
+body.light-mode .hover\:bg-slate-800:hover       { background-color: #d4d5d9 !important; }
+body.light-mode .hover\:bg-slate-800\/20:hover   { background-color: rgba(212,213,217,0.5) !important; }
+body.light-mode .hover\:bg-slate-800\/30:hover   { background-color: rgba(212,213,217,0.6) !important; }
+body.light-mode .hover\:bg-slate-700\/60:hover   { background-color: rgba(200,202,206,0.7) !important; }
+body.light-mode .hover\:border-\[#334155\]:hover { border-color: #9ea1a8 !important; }
+
+/* ── Spezifische Komponenten ──────────────────────────────────────────────── */
 
 /* Sidebar aktives Element bleibt cyan */
 body.light-mode .bg-cyan-500\/10 { background-color: rgba(6, 182, 212, 0.15) !important; }
 
 /* Grüner Online-Indikator: kräftiger im Light-Mode */
-body.light-mode .bg-green-400  { background-color: #16a34a !important; }
-body.light-mode .text-green-400 { color: #15803d !important; }
+body.light-mode .bg-green-400    { background-color: #16a34a !important; }
+body.light-mode .text-green-400  { color: #15803d !important; }
 body.light-mode .border-green-500\/30 { border-color: rgba(22,163,74,0.5) !important; }
 body.light-mode .bg-green-500\/10    { background-color: rgba(22,163,74,0.15) !important; }
 
-/* Scrollbar */
-body.light-mode ::-webkit-scrollbar-track { background: #d0d8e4; }
-body.light-mode ::-webkit-scrollbar-thumb { background: #7a90a8; border-radius: 4px; }
-body.light-mode ::-webkit-scrollbar-thumb:hover { background: #526880; }
+/* ── Scrollbar ────────────────────────────────────────────────────────────── */
+
+body.light-mode ::-webkit-scrollbar-track { background: #dfe0e4; }
+body.light-mode ::-webkit-scrollbar-thumb { background: #9ea1a8; border-radius: 4px; }
+body.light-mode ::-webkit-scrollbar-thumb:hover { background: #7a7c84; }
 
 @layer utilities {
   .animate-pulse-slow {

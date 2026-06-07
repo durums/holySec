@@ -16,3 +16,6 @@ backend/tmp.txt
 *.pdf
 generate_pdf.py
 generate_pentest_report.py
+
+# Scripts
+start.sh

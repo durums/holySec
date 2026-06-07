@@ -11,12 +11,31 @@ const { randomBytes } = require('crypto')
 const { rateLimit }   = require('express-rate-limit')
 const helmet          = require('helmet')
 
-const { init, kv, users, clients, findings, engagements, reports, timeEntries, engGroups, auditLogs, j } = require('./db')
+const multer = require('multer')
+const { init, kv, users, clients, findings, findingAttachments, engagements, reports, timeEntries, engGroups, auditLogs, j } = require('./db')
 
 const app       = express()
 const PORT      = process.env.PORT || 5173
-const DIST_PATH = path.join(__dirname, '..', 'dist')
+const DIST_PATH   = path.join(__dirname, '..', 'dist')
+const UPLOADS_DIR = path.join(__dirname, 'uploads')
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || 'http://localhost:5173'
+
+if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true })
+
+const ALLOWED_MIME = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'application/pdf'])
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, UPLOADS_DIR),
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname).toLowerCase().replace(/[^.a-z0-9]/g, '')
+      cb(null, `${randomBytes(16).toString('hex')}${ext}`)
+    },
+  }),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    ALLOWED_MIME.has(file.mimetype) ? cb(null, true) : cb(new Error('Ungültiger Dateityp'))
+  },
+})
 
 // ─── MIDDLEWARE ───────────────────────────────────────────────────────────────
 
@@ -212,24 +231,26 @@ app.get('/api/findings', requireAuth, async (req, res) => {
 })
 
 app.post('/api/findings', requireAuth, async (req, res) => {
-  const { clientId, engagementId, title, cve, cvss, severity, category, status, date, description, remediation } = req.body || {}
+  const { clientId, engagementId, title, cve, cvss, cvssVector, severity, category, status, date, description, remediation, note, dueDate } = req.body || {}
   if (!title) return res.status(400).json({ error: 'Titel erforderlich.' })
   const id = `f${Date.now()}`
   await findings.insert({ id, clientId: clientId || null, engagementId: engagementId || null,
-    discoveredBy: req.user.memberId, title, cve: cve || null, cvss: cvss || 0,
+    discoveredBy: req.user.memberId, title, cve: cve || null, cvss: cvss || 0, cvssVector: cvssVector || '',
     severity: severity || 'MEDIUM', category: category || 'Other',
-    status: status || 'Open', date: date || '', description: description || '', remediation: remediation || '' })
+    status: status || 'Open', date: date || '', description: description || '', remediation: remediation || '',
+    note: note || '', dueDate: dueDate || '' })
   res.status(201).json(await findings.byId(id))
 })
 
 app.put('/api/findings/:id', requireAuth, async (req, res) => {
   if (!await findings.byId(req.params.id)) return res.status(404).json({ error: 'Nicht gefunden.' })
-  const { clientId, engagementId, title, cve, cvss, severity, category, status, date, description, remediation } = req.body || {}
+  const { clientId, engagementId, title, cve, cvss, cvssVector, severity, category, status, date, description, remediation, note, dueDate } = req.body || {}
   if (!title) return res.status(400).json({ error: 'Titel erforderlich.' })
   await findings.update({ id: req.params.id, clientId: clientId || null, engagementId: engagementId || null,
-    title, cve: cve || null, cvss: cvss || 0, severity: severity || 'MEDIUM',
+    title, cve: cve || null, cvss: cvss || 0, cvssVector: cvssVector || '', severity: severity || 'MEDIUM',
     category: category || 'Other', status: status || 'Open',
-    date: date || '', description: description || '', remediation: remediation || '' })
+    date: date || '', description: description || '', remediation: remediation || '',
+    note: note || '', dueDate: dueDate || '' })
   res.json(await findings.byId(req.params.id))
 })
 
@@ -240,28 +261,73 @@ app.delete('/api/findings/:id', requireAuth, async (req, res) => {
 })
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// FINDING ATTACHMENTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+app.get('/api/findings/:id/attachments', requireAuth, async (req, res) => {
+  res.json(await findingAttachments.byFinding(req.params.id))
+})
+
+app.post('/api/findings/:id/attachments', requireAuth, (req, res, next) => {
+  upload.single('file')(req, res, err => {
+    if (err) return res.status(400).json({ error: err.message })
+    next()
+  })
+}, async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Keine Datei.' })
+  if (!await findings.byId(req.params.id)) return res.status(404).json({ error: 'Nicht gefunden.' })
+  const id = `att${Date.now()}`
+  await findingAttachments.insert({
+    id, findingId: req.params.id, filename: req.file.filename,
+    originalName: req.file.originalname, mimeType: req.file.mimetype,
+    sizeBytes: req.file.size, uploadedBy: req.user.memberId,
+  })
+  res.status(201).json(await findingAttachments.byId(id))
+})
+
+app.get('/api/attachments/:filename', requireAuth, (req, res) => {
+  const filename = path.basename(req.params.filename)
+  const filePath = path.join(UPLOADS_DIR, filename)
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Nicht gefunden.' })
+  res.sendFile(filePath)
+})
+
+app.delete('/api/attachments/:id', requireAuth, async (req, res) => {
+  const att = await findingAttachments.byId(req.params.id)
+  if (!att) return res.status(404).json({ error: 'Nicht gefunden.' })
+  const filePath = path.join(UPLOADS_DIR, att.filename)
+  try { if (fs.existsSync(filePath)) fs.unlinkSync(filePath) } catch {}
+  await findingAttachments.delete(req.params.id)
+  res.json({ ok: true })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // ENGAGEMENTS
 // ═══════════════════════════════════════════════════════════════════════════════
 
 app.get('/api/engagements', requireAuth, async (req, res) => res.json(await engagements.all()))
 
 app.post('/api/engagements', requireAuth, async (req, res) => {
-  const { clientId, title, type, start, end, status, phases, lead, assignedTo } = req.body || {}
+  const { clientId, title, type, start, end, status, phases, lead, assignedTo, scope, methodology, contact, phaseChecks, phaseNotes } = req.body || {}
   if (!title) return res.status(400).json({ error: 'Titel erforderlich.' })
   const id = `e${Date.now()}`
   await engagements.insert({ id, clientId: clientId || null, title, type: type || 'Web',
     start: start || '', end: end || '', status: status || 'Planned',
-    phases: j(phases || []), lead: lead || '', assignedTo: j(assignedTo || []) })
+    phases: j(phases || []), lead: lead || '', assignedTo: j(assignedTo || []),
+    scope: scope || '', methodology: methodology || 'Black Box', contact: contact || '',
+    phaseChecks: phaseChecks || {}, phaseNotes: phaseNotes || {} })
   res.status(201).json(await engagements.byId(id))
 })
 
 app.put('/api/engagements/:id', requireAuth, async (req, res) => {
   if (!await engagements.byId(req.params.id)) return res.status(404).json({ error: 'Nicht gefunden.' })
-  const { clientId, title, type, start, end, status, phases, lead, assignedTo } = req.body || {}
+  const { clientId, title, type, start, end, status, phases, lead, assignedTo, scope, methodology, contact, phaseChecks, phaseNotes } = req.body || {}
   if (!title) return res.status(400).json({ error: 'Titel erforderlich.' })
   await engagements.update({ id: req.params.id, clientId: clientId || null, title, type: type || 'Web',
     start: start || '', end: end || '', status: status || 'Planned',
-    phases: j(phases || []), lead: lead || '', assignedTo: j(assignedTo || []) })
+    phases: j(phases || []), lead: lead || '', assignedTo: j(assignedTo || []),
+    scope: scope || '', methodology: methodology || 'Black Box', contact: contact || '',
+    phaseChecks: phaseChecks || {}, phaseNotes: phaseNotes || {} })
   res.json(await engagements.byId(req.params.id))
 })
 
@@ -316,11 +382,12 @@ app.get('/api/time-entries', requireAuth, async (req, res) => {
 })
 
 app.post('/api/time-entries', requireAuth, async (req, res) => {
-  const { userId, userName, date, start, end, duration } = req.body || {}
+  const { userId, userName, date, start, end, duration, engagementId, clientId } = req.body || {}
   if (!date || !start || !end) return res.status(400).json({ error: 'Datum, Start und Ende erforderlich.' })
   const id = `te${Date.now()}`
   await timeEntries.insert({ id, userId: userId || req.user.memberId,
-    userName: userName || '', date, start, end, duration: duration || 0 })
+    userName: userName || '', date, start, end, duration: duration || 0,
+    engagementId: engagementId || null, clientId: clientId || null })
   res.status(201).json(mapTimeEntry(await timeEntries.byIdRaw(id)))
 })
 

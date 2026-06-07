@@ -7,7 +7,8 @@ import {
   Building2, Activity, Target, Globe, Network, UserCheck,
   Sword, Shield, Eye, Star, Zap, Lock, Info, ChevronDown,
   ChevronUp, ExternalLink, Plus, Search, Bell, Menu, Crown,
-  Users2, UserPlus, LogOut, Trash2, KeyRound, Edit3, StopCircle, PlayCircle, Timer, ClipboardList, Layers, Moon, Sun, Map
+  Users2, UserPlus, LogOut, Trash2, KeyRound, Edit3, StopCircle, PlayCircle, Timer, ClipboardList, Layers, Moon, Sun, Map,
+  Loader2, Paperclip
 } from 'lucide-react'
 import * as L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -173,6 +174,111 @@ const TIPS = {
     radarDue:           "Clients whose next scheduled pentest is in 30 days or less — for timely preparation and resource planning.",
     reportRegistry:     "All created reports by client and engagement. Types: Technical Report (detailed finding report), Executive Summary (management brief), Remediation Plan (action plan). Click status to cycle: Draft → Delivered → Final.",
     auditLog:           "Complete activity log of all user actions. Shows login times, IP addresses, data changes, and downloads in real time.",
+  },
+}
+
+const LABELS = {
+  de: {
+    // Allgemein
+    cancel: 'Abbrechen', save: 'Speichern', create: 'Erstellen', delete: 'Löschen',
+    backToClients: '← Zurück zu Clients',
+    entries: n => `${n} Einträge`,
+    // Präsenz
+    you: 'ICH', presenceOnline: 'ONLINE', presenceAway: 'ABWESEND', presenceOffline: 'OFFLINE',
+    // Dashboard KPI
+    activeClients: 'Aktive Clients', openCriticals: 'Kritische Findings',
+    openFindings: 'Offene Findings', plannedTests: 'Geplante Tests',
+    kpiTotal: n => `${n} gesamt`, requireAction: 'Sofort handeln',
+    totalTracked: n => `${n} erfasst`, thisQuarter: 'Dieses Quartal',
+    // Dashboard Charts
+    engPerMonth: 'Engagements / Monat', last12months: 'Letzte 12 Monate',
+    findingsBySev: 'Findings nach Schweregrad', cvssDistrib: 'CVSS Score Verteilung',
+    recentCritical: 'Aktuelle CRITICAL Findings',
+    myOpenFindings: 'Meine offenen Findings', openSub: n => `${n} offen`,
+    // ClientRadar
+    radarOnHold: 'On Hold', radarPaused: 'Pausiert',
+    radarCritical: 'Kritisch', radarHighestPrio: 'Höchste Priorität',
+    radarDueSoon: 'Test ≤30d', radarComingSoon: 'Bald fällig',
+    radarTitle: 'Client Radar',
+    radarSubtitle: (s, t) => `${s} von ${t} Clients`,
+    radarEmpty: 'Keine Clients entsprechen dem aktiven Filter.',
+    nextTest: 'Nächster Test', today: 'HEUTE',
+    openFindingsCount: n => `${n} offene Findings`,
+    // ReportingCenter
+    allClients: 'Alle Clients', newReport: 'Neuer Report',
+    reportRegistry: 'Report-Verzeichnis', documentCount: n => `${n} Dokumente`,
+    preview: 'Vorschau',
+    // FindingsTracker
+    addNote: 'Notiz hinzufügen', editNote: 'Notiz bearbeiten',
+    searchPlaceholder: 'CVE / Titel suchen...', noCve: 'Kein CVE',
+    // NewFindingModal
+    editFinding: 'Finding bearbeiten', newFinding: 'Neues Finding',
+    loadTemplate: '⚡ Vorlage laden', closeTemplates: '▲ schließen',
+    templateCount: n => `${n} Vorlagen`,
+    fTitle: 'Titel *', fClient: 'Client *', fCategory: 'Kategorie',
+    fEngagement: 'Engagement (optional)', fNoEngagement: '— Kein Engagement —',
+    fCvssCalc: 'CVSS v3.1 Kalkulator', fCve: 'CVE (optional)',
+    fSeverity: 'Schweregrad', fStatus: 'Status', fDiscovered: 'Entdeckt von',
+    fDueDate: 'Fälligkeit', fDescription: 'Beschreibung', fRemediation: 'Remediation',
+    fCapture: 'Finding erfassen', fPlaceholder: 'z.B. SQL-Injection im Login-Formular',
+    // NewEngagementModal
+    editEngagement: 'Engagement bearbeiten', newEngagement: 'Neues Engagement',
+    eTitle: 'Titel *', eClient: 'Client', eType: 'Typ', eMethodology: 'Methodik',
+    eStatus: 'Status', eStart: 'Start *', eEnd: 'Ende *', ePhases: 'Phasen',
+    eLead: 'Lead', eContact: 'Ansprechpartner (Kunde)', eScope: 'Scope',
+    eTitlePlaceholder: 'Engagement-Titel...',
+    eScopePlaceholder: 'IP-Ranges, Domains, ausgeschlossene Systeme...',
+  },
+  en: {
+    // General
+    cancel: 'Cancel', save: 'Save', create: 'Create', delete: 'Delete',
+    backToClients: '← Back to Clients',
+    entries: n => `${n} entries`,
+    // Presence
+    you: 'YOU', presenceOnline: 'ONLINE', presenceAway: 'AWAY', presenceOffline: 'OFFLINE',
+    // Dashboard KPI
+    activeClients: 'Active Clients', openCriticals: 'Open Criticals',
+    openFindings: 'Open Findings', plannedTests: 'Planned Tests',
+    kpiTotal: n => `${n} total`, requireAction: 'Require immediate action',
+    totalTracked: n => `${n} total tracked`, thisQuarter: 'This quarter',
+    // Dashboard Charts
+    engPerMonth: 'Engagements / Month', last12months: 'Last 12 months',
+    findingsBySev: 'Findings by Severity', cvssDistrib: 'CVSS Score Distribution',
+    recentCritical: 'Recent Critical Findings',
+    myOpenFindings: 'My Open Findings', openSub: n => `${n} open`,
+    // ClientRadar
+    radarOnHold: 'On Hold', radarPaused: 'Paused',
+    radarCritical: 'Critical', radarHighestPrio: 'Highest priority',
+    radarDueSoon: 'Test ≤30d', radarComingSoon: 'Due soon',
+    radarTitle: 'Client Radar',
+    radarSubtitle: (s, t) => `${s} of ${t} Clients`,
+    radarEmpty: 'No clients match the active filter.',
+    nextTest: 'Next Test', today: 'TODAY',
+    openFindingsCount: n => `${n} open findings`,
+    // ReportingCenter
+    allClients: 'All Clients', newReport: 'New Report',
+    reportRegistry: 'Report Registry', documentCount: n => `${n} documents`,
+    preview: 'Preview',
+    // FindingsTracker
+    addNote: 'Add note', editNote: 'Edit note',
+    searchPlaceholder: 'Search CVE / title...', noCve: 'No CVE',
+    // NewFindingModal
+    editFinding: 'Edit Finding', newFinding: 'New Finding',
+    loadTemplate: '⚡ Load Template', closeTemplates: '▲ close',
+    templateCount: n => `${n} templates`,
+    fTitle: 'Title *', fClient: 'Client *', fCategory: 'Category',
+    fEngagement: 'Engagement (optional)', fNoEngagement: '— No Engagement —',
+    fCvssCalc: 'CVSS v3.1 Calculator', fCve: 'CVE (optional)',
+    fSeverity: 'Severity', fStatus: 'Status', fDiscovered: 'Discovered by',
+    fDueDate: 'Due Date', fDescription: 'Description', fRemediation: 'Remediation',
+    fCapture: 'Capture Finding', fPlaceholder: 'e.g. SQL Injection in login form',
+    // NewEngagementModal
+    editEngagement: 'Edit Engagement', newEngagement: 'New Engagement',
+    eTitle: 'Title *', eClient: 'Client', eType: 'Type', eMethodology: 'Methodology',
+    eStatus: 'Status', eStart: 'Start *', eEnd: 'End *', ePhases: 'Phases',
+    eLead: 'Lead', eContact: 'Customer Contact', eScope: 'Scope',
+    eTitlePlaceholder: 'Engagement title...',
+    eScopePlaceholder: 'IP ranges, domains, excluded systems...',
   },
 }
 
@@ -966,6 +1072,8 @@ function Sidebar({ active, onNav, collapsed, onToggle, currentUser, onLogout, ui
 function TopBar({ title, subtitle, currentUser, assignments, clients: allClients = [], engagements: allEngagements = [], findings: allFindings = [], activeTimer, onClockIn, onClockOut, userPresence, onPresenceChange, darkMode, onToggleDark, reminders = [], onMobileMenuToggle }) {
   const [showNotifs, setShowNotifs] = useState(false)
   const [showPresence, setShowPresence] = useState(false)
+  const [showClockPicker, setShowClockPicker] = useState(false)
+  const [clockEngId, setClockEngId] = useState('')
   const [readNotifs, setReadNotifs] = useState(() => {
     try {
       const key = `holysec_read_notifs_${currentUser?.id || 'guest'}`
@@ -1004,11 +1112,7 @@ function TopBar({ title, subtitle, currentUser, assignments, clients: allClients
       const d = daysUntil(c.nextTest)
       return { id: `t-${c.id}`, Icon: Calendar, color: 'text-yellow-400', bg: 'bg-yellow-500/5 border-yellow-500/10', label: `Test in ${d === 0 ? 'HEUTE' : d + 'd'}`, body: c.name, sub: c.industry }
     }),
-    ...scopeEngagements.filter(e => e.status === 'Active').slice(0, 2).map(e => {
-      const client = scopeClients.find(c => c.id === e.clientId)
-      return { id: `e-${e.id}`, Icon: Activity, color: 'text-cyan-400', bg: 'bg-cyan-500/5 border-cyan-500/10', label: 'Aktives Engagement', body: e.title, sub: client?.name }
-    }),
-  ], [reminders, currentUser?.id, scopeFindings, scopeClients, scopeEngagements])
+  ], [reminders, currentUser?.id, scopeFindings, scopeClients])
   const notifItems = useMemo(() => allNotifItems.filter(n => !readNotifs.has(n.id)), [allNotifItems, readNotifs])
   const lsKey = `holysec_read_notifs_${currentUser?.id || 'guest'}`
   const markRead = (id) => setReadNotifs(prev => {
@@ -1105,16 +1209,43 @@ function TopBar({ title, subtitle, currentUser, assignments, clients: allClients
           <div className="flex items-center gap-2 px-2 lg:px-3 py-1.5 bg-green-500/5 border border-green-500/25 rounded">
             <div className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
             <span className="text-xs font-mono text-green-400 tabular-nums w-16 hidden sm:inline">{formatDuration(elapsed)}</span>
+            {activeTimer?.engagementId && (() => {
+              const eng = allEngagements.find(e => e.id === activeTimer.engagementId)
+              return eng ? <span className="text-[9px] font-mono text-green-700 truncate max-w-20 hidden sm:inline">{eng.title}</span> : null
+            })()}
             <button onClick={onClockOut}
               className="flex items-center gap-1 text-[10px] font-mono text-slate-500 hover:text-red-400 transition-colors sm:border-l sm:border-green-500/20 sm:pl-2 sm:ml-1">
               <StopCircle size={11} /><span className="hidden sm:inline"> STOP</span>
             </button>
           </div>
         ) : (
-          <button onClick={onClockIn}
-            className="flex items-center gap-1.5 px-2 lg:px-3 py-1.5 bg-green-500/10 border border-green-500/30 rounded text-xs font-mono text-green-400 hover:bg-green-500/20 hover:border-green-500/50 transition-all">
-            <PlayCircle size={13} /><span className="hidden sm:inline"> Einstempeln</span>
-          </button>
+          <div className="relative">
+            <button onClick={() => setShowClockPicker(v => !v)}
+              className="flex items-center gap-1.5 px-2 lg:px-3 py-1.5 bg-green-500/10 border border-green-500/30 rounded text-xs font-mono text-green-400 hover:bg-green-500/20 hover:border-green-500/50 transition-all">
+              <PlayCircle size={13} /><span className="hidden sm:inline"> Einstempeln</span>
+            </button>
+            {showClockPicker && (
+              <div className="absolute right-0 top-full mt-1 w-64 bg-[#0f172a] border border-[#1e293b] rounded-xl shadow-2xl p-3 z-50 space-y-2">
+                <p className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">Engagement (optional)</p>
+                <select value={clockEngId} onChange={e => setClockEngId(e.target.value)}
+                  className="w-full bg-[#1e293b] border border-[#334155] rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-green-500/50 transition-colors">
+                  <option value="">— Kein Engagement —</option>
+                  {scopeEngagements.filter(e => e.status === 'Active' || e.status === 'Planned').map(e => (
+                    <option key={e.id} value={e.id}>{e.title}</option>
+                  ))}
+                </select>
+                <button onClick={() => {
+                  const eng = allEngagements.find(e => e.id === clockEngId)
+                  onClockIn(clockEngId || null, eng?.clientId || null)
+                  setShowClockPicker(false)
+                  setClockEngId('')
+                }}
+                  className="w-full py-1.5 rounded-lg border border-green-500/40 bg-green-500/10 text-xs font-mono text-green-400 hover:bg-green-500/20 transition-all">
+                  <PlayCircle size={11} className="inline mr-1" /> Timer starten
+                </button>
+              </div>
+            )}
+          </div>
         )}
 
         {/* Presence */}
@@ -1179,6 +1310,46 @@ function Dashboard({ onClientClick, clients: allClients = [], currentUser, assig
   const totalOpen          = useMemo(() => allFindingsProp.filter(f => f.status === 'Open').length, [allFindingsProp])
   const plannedEngagements = useMemo(() => allEngProp.filter(e => e.status === 'Planned').length, [allEngProp])
 
+  const severityDist = useMemo(() => {
+    if (allFindingsProp.length === 0) return SEVERITY_DIST
+    const counts = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 }
+    allFindingsProp.forEach(f => { if (counts[f.severity] !== undefined) counts[f.severity]++ })
+    return [
+      { name: 'CRITICAL', value: counts.CRITICAL, color: '#ef4444' },
+      { name: 'HIGH',     value: counts.HIGH,     color: '#f97316' },
+      { name: 'MEDIUM',   value: counts.MEDIUM,   color: '#eab308' },
+      { name: 'LOW',      value: counts.LOW,       color: '#22c55e' },
+    ].filter(s => s.value > 0)
+  }, [allFindingsProp])
+
+  const cvssDistrib = useMemo(() => {
+    if (allFindingsProp.length === 0) return CVSS_DISTRIBUTION
+    const buckets = [['0–2',0],['2–4',0],['4–6',0],['6–8',0],['8–10',0]]
+    allFindingsProp.forEach(f => {
+      const v = parseFloat(f.cvss) || 0
+      const i = v < 2 ? 0 : v < 4 ? 1 : v < 6 ? 2 : v < 8 ? 3 : 4
+      buckets[i][1]++
+    })
+    return buckets.map(([range, count]) => ({ range, count }))
+  }, [allFindingsProp])
+
+  const engPerMonth = useMemo(() => {
+    const now = new Date()
+    const months = {}
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+      const key = d.toLocaleString('de', { month: 'short', year: '2-digit' })
+      months[key] = 0
+    }
+    allEngProp.forEach(e => {
+      if (!e.start) return
+      const d = new Date(e.start)
+      const key = d.toLocaleString('de', { month: 'short', year: '2-digit' })
+      if (key in months) months[key]++
+    })
+    return Object.entries(months).map(([month, count]) => ({ month, count }))
+  }, [allEngProp])
+
   return (
     <div className="p-3 lg:p-6 space-y-4 lg:space-y-6">
       {/* KPI row */}
@@ -1195,7 +1366,7 @@ function Dashboard({ onClientClick, clients: allClients = [], currentUser, assig
           <PanelHeader title="Engagements / Month" subtitle="Last 12 months" info={TIPS[tipsLang].engPerMonth} />
           <div className="p-4 h-52">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={MONTHLY_ENGAGEMENTS} barSize={18}>
+              <BarChart data={engPerMonth} barSize={18}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                 <XAxis dataKey="month" tick={{ fill: '#64748b', fontSize: 10, fontFamily: 'monospace' }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fill: '#64748b', fontSize: 10, fontFamily: 'monospace' }} axisLine={false} tickLine={false} />
@@ -1211,8 +1382,8 @@ function Dashboard({ onClientClick, clients: allClients = [], currentUser, assig
           <div className="p-4 h-52 flex flex-col items-center justify-center">
             <ResponsiveContainer width="100%" height="80%">
               <PieChart>
-                <Pie data={SEVERITY_DIST} cx="50%" cy="50%" innerRadius={45} outerRadius={70} paddingAngle={3} dataKey="value">
-                  {SEVERITY_DIST.map((entry) => (
+                <Pie data={severityDist} cx="50%" cy="50%" innerRadius={45} outerRadius={70} paddingAngle={3} dataKey="value">
+                  {severityDist.map((entry) => (
                     <Cell key={entry.name} fill={entry.color} stroke="transparent" />
                   ))}
                 </Pie>
@@ -1220,7 +1391,7 @@ function Dashboard({ onClientClick, clients: allClients = [], currentUser, assig
               </PieChart>
             </ResponsiveContainer>
             <div className="flex gap-3 mt-1">
-              {SEVERITY_DIST.map(s => (
+              {severityDist.map(s => (
                 <div key={s.name} className="flex items-center gap-1">
                   <div className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />
                   <span className="text-[10px] font-mono text-slate-500">{s.name.slice(0,4)}</span>
@@ -1231,13 +1402,43 @@ function Dashboard({ onClientClick, clients: allClients = [], currentUser, assig
         </Panel>
       </div>
 
+      {/* Meine offenen Findings */}
+      {currentUser && (() => {
+        const myOpen = allFindingsProp
+          .filter(f => f.discoveredBy === currentUser.memberId && f.status === 'Open')
+          .sort((a, b) => new Date(b.date) - new Date(a.date))
+        if (myOpen.length === 0) return null
+        return (
+          <Panel>
+            <PanelHeader title="Meine offenen Findings" subtitle={`${myOpen.length} offen`} />
+            <div className="divide-y divide-[#1e293b]">
+              {myOpen.slice(0, 6).map(f => {
+                const client = allClients.find(c => c.id === f.clientId)
+                return (
+                  <div key={f.id} className="px-4 py-3 flex items-center gap-3 hover:bg-slate-800/30 transition-colors cursor-pointer"
+                    onClick={() => onNav?.('findings', { findingId: f.id })}>
+                    <SeverityBadge severity={f.severity} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-mono text-slate-200 truncate">{f.title}</p>
+                      <p className="text-[10px] font-mono text-slate-600">{client?.name} · {f.date}</p>
+                    </div>
+                    <div className="w-28 shrink-0 hidden sm:block"><CvssBar score={f.cvss} /></div>
+                    <StatusBadge status={f.status} />
+                  </div>
+                )
+              })}
+            </div>
+          </Panel>
+        )
+      })()}
+
       {/* CVSS Distribution + Recent Findings */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Panel>
           <PanelHeader title="CVSS Score Distribution" info={TIPS[tipsLang].cvssDistrib} />
           <div className="p-4 h-44">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={CVSS_DISTRIBUTION}>
+              <LineChart data={cvssDistrib}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                 <XAxis dataKey="range" tick={{ fill: '#64748b', fontSize: 10, fontFamily: 'monospace' }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fill: '#64748b', fontSize: 10, fontFamily: 'monospace' }} axisLine={false} tickLine={false} />
@@ -1976,6 +2177,100 @@ function ClientDetail({ clientId, onBack, clients: allClients = [], findings: al
 
 const FINDING_CATEGORIES = ['RCE', 'XSS', 'SQLi', 'Auth', 'Crypto', 'Config', 'Exposure', 'DoS', 'PrivEsc', 'Container', 'OT/ICS', 'Other']
 
+const FINDING_TEMPLATES = [
+  { title: 'SQL Injection', category: 'SQLi', cvss: 9.8, severity: 'CRITICAL',
+    description: 'Die Anwendung ist anfällig für SQL-Injection. Benutzereingaben werden ohne ausreichende Validierung direkt in SQL-Queries eingebettet, was einem Angreifer ermöglicht, Datenbankabfragen zu manipulieren, sensible Daten auszulesen oder zu verändern.',
+    remediation: 'Prepared Statements / Parameterized Queries verwenden. Eingabevalidierung implementieren. Datenbankbenutzer auf minimale Berechtigungen beschränken (Principle of Least Privilege).' },
+  { title: 'Reflected XSS', category: 'XSS', cvss: 6.1, severity: 'MEDIUM',
+    description: 'Reflected Cross-Site Scripting: Benutzereingaben werden ungefiltert in der HTTP-Antwort reflektiert und vom Browser des Opfers als Skript ausgeführt. Ein Angreifer kann Opfer durch präparierte Links angreifen.',
+    remediation: 'Alle Ausgaben kontextabhängig kodieren (HTML-Encoding). Content Security Policy (CSP) implementieren. Input-Validierung serverseitig durchführen.' },
+  { title: 'Stored XSS', category: 'XSS', cvss: 8.8, severity: 'HIGH',
+    description: 'Stored Cross-Site Scripting: Schadhafter Code wird dauerhaft in der Datenbank gespeichert und bei jedem Aufruf der betroffenen Seite im Browser anderer Nutzer ausgeführt. Besonders kritisch bei Admin-Panels oder öffentlichen Inhalten.',
+    remediation: 'Alle Benutzereingaben beim Speichern und beim Ausgeben sanitisieren. Content Security Policy (CSP) implementieren. Ausgaben immer kontextspezifisch kodieren.' },
+  { title: 'Insecure Direct Object Reference (IDOR)', category: 'Auth', cvss: 6.5, severity: 'MEDIUM',
+    description: 'Die Anwendung erlaubt direkten Zugriff auf interne Objekte (z.B. Datensätze, Dateien) über vorhersehbare IDs ohne ausreichende Autorisierungsprüfung. Ein Angreifer kann durch Manipulation von IDs auf fremde Daten zugreifen.',
+    remediation: 'Serverseitige Autorisierungsprüfung bei jedem Zugriff implementieren. Indirekte Referenzen (z.B. per Session-gebundene Maps) oder kryptografisch sichere IDs verwenden.' },
+  { title: 'Broken Authentication', category: 'Auth', cvss: 8.1, severity: 'HIGH',
+    description: 'Schwachstellen im Authentifizierungsmechanismus ermöglichen das Kompromittieren von Passwörtern, Session-Tokens oder anderen Zugangsdaten. Mögliche Ausprägungen: schwache Passwortrichtlinien, fehlendes Account-Lockout, unsichere Session-Verwaltung.',
+    remediation: 'Multi-Faktor-Authentifizierung implementieren. Sichere Passwortrichtlinien erzwingen. Session-Tokens nach Login erneuern. Account-Lockout nach fehlgeschlagenen Versuchen einführen.' },
+  { title: 'Directory Traversal', category: 'Exposure', cvss: 7.5, severity: 'HIGH',
+    description: 'Die Anwendung erlaubt Zugriff auf Dateien außerhalb des vorgesehenen Verzeichnisses durch Manipulation von Dateipfaden (z.B. "../../../etc/passwd"). Sensible Systemdateien können ausgelesen werden.',
+    remediation: 'Eingaben auf erlaubte Zeichen beschränken. Canonicalization der Pfade vor Verarbeitung. Dateizugriff auf ein definiertes Basisverzeichnis einschränken (chroot / jail).' },
+  { title: 'Server-Side Request Forgery (SSRF)', category: 'Exposure', cvss: 8.6, severity: 'HIGH',
+    description: 'Die Anwendung führt HTTP-Requests an von Benutzern kontrollierte URLs aus. Ein Angreifer kann interne Dienste, Cloud-Metadaten (z.B. AWS IMDS) oder andere interne Ressourcen ansprechen, die von außen nicht erreichbar sind.',
+    remediation: 'Allowlist für erlaubte Ziel-URLs/IP-Ranges implementieren. Interne IP-Adressen blockieren. Cloud-Metadaten-Endpunkte absichern (IMDSv2). Netzwerksegmentierung überprüfen.' },
+  { title: 'Remote Code Execution (RCE)', category: 'RCE', cvss: 9.8, severity: 'CRITICAL',
+    description: 'Ein Angreifer kann beliebigen Code auf dem Zielsystem ausführen. Dies stellt die kritischste Klasse von Schwachstellen dar und ermöglicht vollständige Systemkompromittierung.',
+    remediation: 'Eingabevalidierung auf allen Ebenen. Unsichere Funktionen (eval, exec, system) vermeiden. Anwendung mit minimalen Systemrechten ausführen. WAF einsetzen. Regelmäßige Sicherheitsupdates einspielen.' },
+  { title: 'Security Misconfiguration', category: 'Config', cvss: 5.3, severity: 'MEDIUM',
+    description: 'Unsichere Standardkonfigurationen, unnötige Features, fehlende Sicherheitsheader oder falsch konfigurierte Cloud-Permissions ermöglichen Angreifern erweiterten Zugriff oder Informationsgewinnung.',
+    remediation: 'Hardening-Checklisten anwenden. Unnötige Dienste/Features deaktivieren. Sicherheitsheader setzen (HSTS, CSP, X-Frame-Options). Konfigurationsmanagement und regelmäßige Reviews einführen.' },
+  { title: 'Sensitive Data Exposure', category: 'Exposure', cvss: 7.5, severity: 'HIGH',
+    description: 'Sensible Daten (Passwörter, API-Keys, PII, Finanzdaten) werden unverschlüsselt übertragen, im Klartext gespeichert oder in Logs/Fehlermeldungen exponiert.',
+    remediation: 'TLS für alle Verbindungen erzwingen. Sensible Daten verschlüsselt speichern. Logging sensibler Daten unterbinden. Fehlermeldungen keine internen Details preisgeben lassen.' },
+]
+
+const CVSS_WEIGHTS = {
+  AV: { N: 0.85, A: 0.62, L: 0.55, P: 0.20 },
+  AC: { L: 0.77, H: 0.44 },
+  PR: { unchanged: { N: 0.85, L: 0.62, H: 0.27 }, changed: { N: 0.85, L: 0.68, H: 0.50 } },
+  UI: { N: 0.85, R: 0.62 },
+  CIA: { N: 0.00, L: 0.22, H: 0.56 },
+}
+
+function calcCvss({ AV, AC, PR, UI, S, C, I, A }) {
+  const av = CVSS_WEIGHTS.AV[AV] ?? 0
+  const ac = CVSS_WEIGHTS.AC[AC] ?? 0
+  const pr = CVSS_WEIGHTS.PR[S === 'C' ? 'changed' : 'unchanged'][PR] ?? 0
+  const ui = CVSS_WEIGHTS.UI[UI] ?? 0
+  const c  = CVSS_WEIGHTS.CIA[C] ?? 0
+  const ii = CVSS_WEIGHTS.CIA[I] ?? 0
+  const a  = CVSS_WEIGHTS.CIA[A] ?? 0
+  const iscBase = 1 - (1 - c) * (1 - ii) * (1 - a)
+  if (iscBase === 0) return 0
+  const isc = S === 'C'
+    ? Math.min(7.52 * (iscBase - 0.029) - 3.25 * Math.pow(iscBase - 0.02, 15), 10)
+    : 6.42 * iscBase
+  const exploit = 8.22 * av * ac * pr * ui
+  const raw = S === 'C'
+    ? Math.min(1.08 * (isc + exploit), 10)
+    : Math.min(isc + exploit, 10)
+  return Math.ceil(raw * 10) / 10
+}
+
+const CVSS_METRICS = [
+  { key: 'AV', label: 'Attack Vector',    opts: [{ v:'N', l:'Network' }, { v:'A', l:'Adjacent' }, { v:'L', l:'Local' }, { v:'P', l:'Physical' }] },
+  { key: 'AC', label: 'Attack Complexity',opts: [{ v:'L', l:'Low' }, { v:'H', l:'High' }] },
+  { key: 'PR', label: 'Privileges Req.',  opts: [{ v:'N', l:'None' }, { v:'L', l:'Low' }, { v:'H', l:'High' }] },
+  { key: 'UI', label: 'User Interaction', opts: [{ v:'N', l:'None' }, { v:'R', l:'Required' }] },
+  { key: 'S',  label: 'Scope',            opts: [{ v:'U', l:'Unchanged' }, { v:'C', l:'Changed' }] },
+  { key: 'C',  label: 'Confidentiality',  opts: [{ v:'N', l:'None' }, { v:'L', l:'Low' }, { v:'H', l:'High' }] },
+  { key: 'I',  label: 'Integrity',        opts: [{ v:'N', l:'None' }, { v:'L', l:'Low' }, { v:'H', l:'High' }] },
+  { key: 'A',  label: 'Availability',     opts: [{ v:'N', l:'None' }, { v:'L', l:'Low' }, { v:'H', l:'High' }] },
+]
+
+const DEFAULT_CVSS_VECTOR = { AV:'N', AC:'L', PR:'N', UI:'N', S:'U', C:'N', I:'N', A:'N' }
+
+function CvssCalculator({ vector, onChange }) {
+  return (
+    <div className="bg-[#1e293b]/60 border border-[#334155] rounded-lg p-3 space-y-1.5">
+      {CVSS_METRICS.map(({ key, label, opts }) => (
+        <div key={key} className="flex items-center gap-2">
+          <span className="text-[9px] font-mono text-slate-500 uppercase tracking-wider w-28 shrink-0">{label}</span>
+          <div className="flex gap-1 flex-wrap">
+            {opts.map(({ v, l }) => (
+              <button key={v} onClick={() => onChange({ ...vector, [key]: v })}
+                className={`px-2 py-0.5 rounded text-[9px] font-mono border transition-all ${vector[key] === v ? 'border-cyan-500/60 bg-cyan-500/15 text-cyan-300' : 'border-[#334155] text-slate-600 hover:text-slate-400 hover:border-slate-500'}`}>
+                {l}
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function cvssToSeverity(score) {
   const n = parseFloat(score)
   if (n >= 9) return 'CRITICAL'
@@ -1984,8 +2279,15 @@ function cvssToSeverity(score) {
   return 'LOW'
 }
 
-function NewFindingModal({ clients = [], currentUser, onSave, onClose, editFinding = null }) {
+function NewFindingModal({ clients = [], currentUser, onSave, onClose, editFinding = null, defaultEngagementId = null, engagements = [] }) {
   const today = new Date().toISOString().split('T')[0]
+  const [showTemplates, setShowTemplates] = useState(false)
+  const [cvssVector, setCvssVector] = useState(() => {
+    if (editFinding?.cvssVector) {
+      try { return typeof editFinding.cvssVector === 'string' ? JSON.parse(editFinding.cvssVector) : editFinding.cvssVector } catch {}
+    }
+    return DEFAULT_CVSS_VECTOR
+  })
   const [form, setForm] = useState(editFinding ? {
     title: editFinding.title,
     cve: editFinding.cve || '',
@@ -1993,8 +2295,10 @@ function NewFindingModal({ clients = [], currentUser, onSave, onClose, editFindi
     severity: editFinding.severity,
     category: editFinding.category || 'Auth',
     clientId: editFinding.clientId,
+    engagementId: editFinding.engagementId || '',
     status: editFinding.status,
     date: editFinding.date,
+    dueDate: editFinding.dueDate || '',
     description: editFinding.description || '',
     remediation: editFinding.remediation || '',
   } : {
@@ -2004,8 +2308,10 @@ function NewFindingModal({ clients = [], currentUser, onSave, onClose, editFindi
     severity: 'HIGH',
     category: 'Auth',
     clientId: clients[0]?.id || '',
+    engagementId: defaultEngagementId || '',
     status: 'Open',
     date: today,
+    dueDate: '',
     description: '',
     remediation: '',
   })
@@ -2018,6 +2324,17 @@ function NewFindingModal({ clients = [], currentUser, onSave, onClose, editFindi
     if (!isNaN(n) && n >= 0 && n <= 10) set('severity', cvssToSeverity(n))
   }
 
+  const handleVectorChange = (newVec) => {
+    setCvssVector(newVec)
+    const score = calcCvss(newVec)
+    handleCvssChange(String(score))
+  }
+
+  const applyTemplate = (tpl) => {
+    setForm(p => ({ ...p, title: tpl.title, category: tpl.category, cvss: String(tpl.cvss), severity: tpl.severity, description: tpl.description, remediation: tpl.remediation }))
+    setShowTemplates(false)
+  }
+
   const canSubmit = form.title.trim() && form.clientId && form.cvss !== '' && !isNaN(parseFloat(form.cvss))
 
   const handleSubmit = () => {
@@ -2025,13 +2342,16 @@ function NewFindingModal({ clients = [], currentUser, onSave, onClose, editFindi
     onSave({
       id: editFinding ? editFinding.id : `f_${Date.now()}`,
       clientId: form.clientId,
+      engagementId: form.engagementId || null,
       title: form.title.trim(),
       cve: form.cve.trim() || null,
       cvss: parseFloat(form.cvss),
+      cvssVector: JSON.stringify(cvssVector),
       severity: form.severity,
       category: form.category,
       status: form.status,
       date: form.date,
+      dueDate: form.dueDate || '',
       description: form.description.trim(),
       remediation: form.remediation.trim(),
     })
@@ -2039,6 +2359,7 @@ function NewFindingModal({ clients = [], currentUser, onSave, onClose, editFindi
   }
 
   const sevColors = { CRITICAL: 'border-red-500/60 bg-red-500/10 text-red-400', HIGH: 'border-orange-500/60 bg-orange-500/10 text-orange-400', MEDIUM: 'border-yellow-500/60 bg-yellow-500/10 text-yellow-400', LOW: 'border-green-500/60 bg-green-500/10 text-green-400' }
+  const sevBadge  = { CRITICAL: 'bg-red-500/20 text-red-400', HIGH: 'bg-orange-500/20 text-orange-400', MEDIUM: 'bg-yellow-500/20 text-yellow-400', LOW: 'bg-green-500/20 text-green-400' }
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
@@ -2049,6 +2370,32 @@ function NewFindingModal({ clients = [], currentUser, onSave, onClose, editFindi
           </h3>
           <button onClick={onClose} className="text-slate-500 hover:text-slate-300 transition-colors"><X size={16} /></button>
         </div>
+
+        {/* Template Picker */}
+        {!editFinding && (
+          <div>
+            <button onClick={() => setShowTemplates(v => !v)}
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-lg border text-xs font-mono transition-all ${showTemplates ? 'border-cyan-500/40 bg-cyan-500/10 text-cyan-400' : 'border-[#334155] text-slate-500 hover:text-slate-300 hover:border-slate-500'}`}>
+              <span>⚡ Vorlage laden</span>
+              <span className="text-[10px] opacity-60">{showTemplates ? '▲ schließen' : `${FINDING_TEMPLATES.length} Vorlagen`}</span>
+            </button>
+            {showTemplates && (
+              <div className="mt-2 grid grid-cols-2 gap-1.5 max-h-52 overflow-y-auto pr-1">
+                {FINDING_TEMPLATES.map((tpl, i) => (
+                  <button key={i} onClick={() => applyTemplate(tpl)}
+                    className="text-left px-3 py-2 rounded-lg border border-[#334155] bg-[#1e293b]/50 hover:border-cyan-500/30 hover:bg-cyan-500/5 transition-all group">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span className={`text-[8px] font-mono font-bold px-1.5 py-0.5 rounded ${sevBadge[tpl.severity]}`}>{tpl.severity}</span>
+                      <span className="text-[9px] font-mono text-slate-500">{tpl.cvss}</span>
+                    </div>
+                    <div className="text-[10px] font-mono text-slate-300 group-hover:text-cyan-300 transition-colors leading-tight">{tpl.title}</div>
+                    <div className="text-[9px] font-mono text-slate-600 mt-0.5">{tpl.category}</div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Title */}
         <div>
@@ -2076,20 +2423,38 @@ function NewFindingModal({ clients = [], currentUser, onSave, onClose, editFindi
           </div>
         </div>
 
-        {/* CVSS + CVE */}
-        <div className="grid grid-cols-2 gap-3">
+        {/* Engagement (optional) */}
+        {engagements.length > 0 && (
           <div>
-            <label className="block text-[10px] font-mono text-slate-500 mb-1 uppercase tracking-wider">CVSS Score *</label>
+            <label className="block text-[10px] font-mono text-slate-500 mb-1 uppercase tracking-wider">Engagement (optional)</label>
+            <select value={form.engagementId} onChange={e => set('engagementId', e.target.value)}
+              className="w-full bg-[#1e293b] border border-[#334155] rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500/50 transition-colors">
+              <option value="">— Kein Engagement —</option>
+              {engagements.map(e => <option key={e.id} value={e.id}>{e.title}</option>)}
+            </select>
+          </div>
+        )}
+
+        {/* CVSS v3.1 Kalkulator */}
+        <div>
+          <label className="block text-[10px] font-mono text-slate-500 mb-2 uppercase tracking-wider">CVSS v3.1 Kalkulator</label>
+          <CvssCalculator vector={cvssVector} onChange={handleVectorChange} />
+          <div className="mt-2 flex items-center gap-3">
+            <div className="flex-1">
+              <CvssBar score={parseFloat(form.cvss) || 0} />
+            </div>
             <input type="number" min="0" max="10" step="0.1" value={form.cvss} onChange={e => handleCvssChange(e.target.value)}
-              className="w-full bg-[#1e293b] border border-[#334155] rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500/50 transition-colors"
-              placeholder="0.0 – 10.0" />
+              className="w-20 bg-[#1e293b] border border-[#334155] rounded-lg px-2 py-1.5 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500/50 transition-colors text-center"
+              placeholder="0.0" />
           </div>
-          <div>
-            <label className="block text-[10px] font-mono text-slate-500 mb-1 uppercase tracking-wider">CVE (optional)</label>
-            <input value={form.cve} onChange={e => set('cve', e.target.value)}
-              className="w-full bg-[#1e293b] border border-[#334155] rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500/50 transition-colors"
-              placeholder="CVE-2024-XXXXX" />
-          </div>
+        </div>
+
+        {/* CVE */}
+        <div>
+          <label className="block text-[10px] font-mono text-slate-500 mb-1 uppercase tracking-wider">CVE (optional)</label>
+          <input value={form.cve} onChange={e => set('cve', e.target.value)}
+            className="w-full bg-[#1e293b] border border-[#334155] rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500/50 transition-colors"
+            placeholder="CVE-2024-XXXXX" />
         </div>
 
         {/* Severity */}
@@ -2105,8 +2470,8 @@ function NewFindingModal({ clients = [], currentUser, onSave, onClose, editFindi
           </div>
         </div>
 
-        {/* Status + Date */}
-        <div className="grid grid-cols-2 gap-3">
+        {/* Status + Date + Due Date */}
+        <div className="grid grid-cols-3 gap-3">
           <div>
             <label className="block text-[10px] font-mono text-slate-500 mb-1 uppercase tracking-wider">Status</label>
             <select value={form.status} onChange={e => set('status', e.target.value)}
@@ -2115,8 +2480,13 @@ function NewFindingModal({ clients = [], currentUser, onSave, onClose, editFindi
             </select>
           </div>
           <div>
-            <label className="block text-[10px] font-mono text-slate-500 mb-1 uppercase tracking-wider">Datum</label>
+            <label className="block text-[10px] font-mono text-slate-500 mb-1 uppercase tracking-wider">Entdeckt</label>
             <input type="date" value={form.date} onChange={e => set('date', e.target.value)}
+              className="w-full bg-[#1e293b] border border-[#334155] rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500/50 transition-colors" />
+          </div>
+          <div>
+            <label className="block text-[10px] font-mono text-slate-500 mb-1 uppercase tracking-wider">Fälligkeit</label>
+            <input type="date" value={form.dueDate} onChange={e => set('dueDate', e.target.value)}
               className="w-full bg-[#1e293b] border border-[#334155] rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500/50 transition-colors" />
           </div>
         </div>
@@ -2246,6 +2616,79 @@ function ReminderModal({ finding, engagement, teamMembers, currentUser, onSend, 
 
 // ─── FINDINGS TRACKER ────────────────────────────────────────────────────────
 
+function AttachmentsSection({ findingId, currentUser }) {
+  const [attachments, setAttachments] = useState([])
+  const [uploading, setUploading] = useState(false)
+  const fileRef = useRef(null)
+  const canUpload = currentUser?.role !== 'Junior Pentester'
+
+  useEffect(() => {
+    fetch(`/api/findings/${findingId}/attachments`, { credentials: 'include' })
+      .then(r => r.ok ? r.json() : [])
+      .then(data => Array.isArray(data) && setAttachments(data))
+      .catch(() => {})
+  }, [findingId])
+
+  const handleUpload = async (file) => {
+    if (!file) return
+    setUploading(true)
+    const fd = new FormData()
+    fd.append('file', file)
+    try {
+      const r = await fetch(`/api/findings/${findingId}/attachments`, { method: 'POST', credentials: 'include', body: fd })
+      if (r.ok) { const att = await r.json(); setAttachments(prev => [...prev, att]) }
+    } finally { setUploading(false) }
+  }
+
+  const handleDelete = async (id) => {
+    await fetch(`/api/attachments/${id}`, { method: 'DELETE', credentials: 'include' })
+    setAttachments(prev => prev.filter(a => a.id !== id))
+  }
+
+  return (
+    <div className="mt-3 border-t border-[#1e293b] pt-3">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-[10px] font-mono text-slate-600 uppercase tracking-wider flex items-center gap-1"><Paperclip size={10} /> Anhänge ({attachments.length})</span>
+        {canUpload && (
+          <>
+            <input ref={fileRef} type="file" accept="image/*,.pdf" className="hidden" onChange={e => { handleUpload(e.target.files[0]); e.target.value = '' }} />
+            <button onClick={() => fileRef.current?.click()} disabled={uploading}
+              className="flex items-center gap-1 text-[10px] font-mono text-slate-600 hover:text-cyan-400 transition-colors disabled:opacity-40">
+              {uploading ? <Loader2 size={10} className="animate-spin" /> : <Plus size={10} />} Hochladen
+            </button>
+          </>
+        )}
+      </div>
+      {attachments.length > 0 && (
+        <div className="flex flex-wrap gap-2 mt-1">
+          {attachments.map(att => (
+            <div key={att.id} className="relative group">
+              {att.mime_type?.startsWith('image/') ? (
+                <a href={`/api/attachments/${att.filename}`} target="_blank" rel="noreferrer">
+                  <img src={`/api/attachments/${att.filename}`} alt={att.original_name}
+                    className="w-16 h-16 object-cover rounded border border-[#1e293b] hover:border-cyan-500/40 transition-colors" />
+                </a>
+              ) : (
+                <a href={`/api/attachments/${att.filename}`} target="_blank" rel="noreferrer"
+                  className="flex flex-col items-center justify-center w-16 h-16 rounded border border-[#1e293b] hover:border-cyan-500/40 transition-colors bg-[#0a0a0a]">
+                  <FileText size={20} className="text-slate-500" />
+                  <span className="text-[8px] font-mono text-slate-600 mt-0.5 px-1 truncate w-full text-center">{att.original_name?.slice(0, 9)}</span>
+                </a>
+              )}
+              {canUpload && (
+                <button onClick={() => handleDelete(att.id)}
+                  className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-600 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                  <X size={8} />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function FindingsTracker({ currentUser, assignments, findings: allFindingsProp = [], onAddFinding, onEditFinding, onDeleteFinding, clients: allClientsProp = [], teamMembers = [], engagements = [], onSendReminder, defaultSeverity = 'All', defaultStatus = 'All', defaultClientId = 'All', defaultFindingId = null, tipsLang = 'de' }) {
   const { findings: scopeFindings, clients: scopeClients } = useMemo(
     () => getMyScope(currentUser, assignments, allClientsProp, engagements, allFindingsProp),
@@ -2283,6 +2726,21 @@ function FindingsTracker({ currentUser, assignments, findings: allFindingsProp =
       onEditFinding?.(updated)
       return updated
     }))
+  }
+
+  const exportCsv = () => {
+    const header = ['ID','Titel','Severity','CVSS','Status','Kategorie','CVE','Client','Engagement','Datum','Fälligkeit']
+    const rows = filtered.map(f => {
+      const client = allClientsProp.find(c => c.id === f.clientId)
+      const eng    = engagements.find(e => e.id === f.engagementId)
+      return [f.id, f.title, f.severity, f.cvss, f.status, f.category, f.cve||'', client?.name||'', eng?.title||'', f.date, f.dueDate||'']
+        .map(v => `"${String(v ?? '').replace(/"/g, '""')}"`)
+    })
+    const csv = [header.join(','), ...rows.map(r => r.join(','))].join('\n')
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }))
+    a.download = `holysec_findings_${new Date().toISOString().split('T')[0]}.csv`
+    a.click()
   }
 
   return (
@@ -2323,7 +2781,7 @@ function FindingsTracker({ currentUser, assignments, findings: allFindingsProp =
           </div>
 
           <div className="flex items-center gap-2 ml-auto">
-            <button className="flex items-center gap-2 px-3 py-1.5 bg-[#0f172a] border border-[#1e293b] rounded text-xs font-mono text-slate-500 hover:text-slate-300 hover:border-slate-600 transition-all">
+            <button onClick={exportCsv} className="flex items-center gap-2 px-3 py-1.5 bg-[#0f172a] border border-[#1e293b] rounded text-xs font-mono text-slate-500 hover:text-slate-300 hover:border-slate-600 transition-all">
               <Download size={12} /> Export CSV
             </button>
             {(currentUser?.role === 'Admin' || currentUser?.role === 'Senior Pentester' || currentUser?.role === 'Pentester') && (
@@ -2339,6 +2797,7 @@ function FindingsTracker({ currentUser, assignments, findings: allFindingsProp =
       {showNewModal && (
         <NewFindingModal
           clients={allClientsProp}
+          engagements={engagements}
           currentUser={currentUser}
           onSave={f => { onAddFinding?.(f); setShowNewModal(false) }}
           onClose={() => setShowNewModal(false)}
@@ -2348,6 +2807,7 @@ function FindingsTracker({ currentUser, assignments, findings: allFindingsProp =
       {editFinding && (
         <NewFindingModal
           clients={allClientsProp}
+          engagements={engagements}
           currentUser={currentUser}
           editFinding={editFinding}
           onSave={f => { onEditFinding?.(f); setEditFinding(null) }}
@@ -2361,8 +2821,9 @@ function FindingsTracker({ currentUser, assignments, findings: allFindingsProp =
           {filtered.map(f => {
             const client = allClientsProp.find(c => c.id === f.clientId)
             const isExpanded = expandedId === f.id
+            const isOverdue = f.dueDate && f.status !== 'Closed' && new Date(f.dueDate) < new Date()
             return (
-              <div key={f.id} className="hover:bg-slate-800/20 transition-colors">
+              <div key={f.id} className={`hover:bg-slate-800/20 transition-colors ${isOverdue ? 'border-l-2 border-red-500/60' : ''}`}>
                 <div
                   className="px-4 py-3 flex items-center gap-3 cursor-pointer"
                   onClick={() => setExpandedId(isExpanded ? null : f.id)}
@@ -2370,7 +2831,10 @@ function FindingsTracker({ currentUser, assignments, findings: allFindingsProp =
                   <div className="w-16 sm:w-20 shrink-0"><SeverityBadge severity={f.severity} /></div>
                   <div className="flex-1 min-w-0">
                     <div className="text-xs font-mono text-slate-200 font-medium truncate">{f.title}</div>
-                    <div className="text-[10px] font-mono text-slate-600 truncate">{client?.name} · {f.category} · {f.date}</div>
+                    <div className="text-[10px] font-mono text-slate-600 truncate flex items-center gap-1">
+                      {client?.name} · {f.category} · {f.date}
+                      {isOverdue && <span className="text-red-400 flex items-center gap-0.5 ml-1"><Clock size={9} /> Fällig {f.dueDate}</span>}
+                    </div>
                   </div>
                   <div className="hidden sm:block w-40 shrink-0"><CvssBar score={f.cvss} /></div>
                   {f.cve
@@ -2451,6 +2915,12 @@ function FindingsTracker({ currentUser, assignments, findings: allFindingsProp =
                         </div>
                       )}
                     </div>
+                    {f.dueDate && (
+                      <div className={`flex items-center gap-2 mb-3 px-3 py-1.5 rounded-lg border w-fit ${isOverdue ? 'border-red-500/30 bg-red-500/5 text-red-400' : 'border-[#1e293b] text-slate-500'}`}>
+                        <Clock size={11} />
+                        <span className="text-[10px] font-mono">{isOverdue ? 'Überfällig' : 'Fällig'}: {f.dueDate}</span>
+                      </div>
+                    )}
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <p className="text-[10px] font-mono text-slate-600 uppercase mb-1">Description</p>
@@ -2495,6 +2965,7 @@ function FindingsTracker({ currentUser, assignments, findings: allFindingsProp =
                         </div>
                       )}
                     </div>
+                    <AttachmentsSection findingId={f.id} currentUser={currentUser} />
                   </div>
                   )
                 })()}
@@ -2521,10 +2992,10 @@ function FindingsTracker({ currentUser, assignments, findings: allFindingsProp =
 // ─── ENGAGEMENT PLANNER ──────────────────────────────────────────────────────
 
 const PHASE_COLORS = {
-  Recon:       { bg: 'bg-blue-500', text: 'text-blue-300', border: 'border-blue-500/30' },
-  Scanning:    { bg: 'bg-cyan-500', text: 'text-cyan-300', border: 'border-cyan-500/30' },
-  Exploitation:{ bg: 'bg-red-500', text: 'text-red-300', border: 'border-red-500/30' },
-  Reporting:   { bg: 'bg-green-500', text: 'text-green-300', border: 'border-green-500/30' },
+  Recon:       { bg: 'bg-blue-500', text: 'text-blue-300', border: 'border-blue-500/30', lightText: 'text-blue-700', lightBorder: 'border-blue-500' },
+  Scanning:    { bg: 'bg-cyan-500', text: 'text-cyan-300', border: 'border-cyan-500/30', lightText: 'text-cyan-700', lightBorder: 'border-cyan-500' },
+  Exploitation:{ bg: 'bg-red-500',  text: 'text-red-300',  border: 'border-red-500/30',  lightText: 'text-red-700',  lightBorder: 'border-red-500' },
+  Reporting:   { bg: 'bg-green-500',text: 'text-green-300',border: 'border-green-500/30',lightText: 'text-green-700',lightBorder: 'border-green-500' },
 }
 
 const PHASE_TASKS = {
@@ -2576,15 +3047,19 @@ const TYPE_COLORS = {
 // ─── NEW ENGAGEMENT MODAL ─────────────────────────────────────────────────────
 
 function NewEngagementModal({ clients = [], currentUser, onSave, onClose, existing = null }) {
+  const sf = (k) => (e) => setForm(p => ({ ...p, [k]: e.target.value }))
   const [form, setForm] = useState(existing ? { ...existing } : {
     title: '',
     clientId: clients[0]?.id || '',
     type: 'Web',
+    methodology: 'Black Box',
     start: '',
     end: '',
     status: 'Planned',
     phases: ['Recon'],
     lead: currentUser?.name || '',
+    contact: '',
+    scope: '',
   })
 
   const togglePhase = (phase) => setForm(prev => ({
@@ -2602,9 +3077,12 @@ function NewEngagementModal({ clients = [], currentUser, onSave, onClose, existi
     onClose()
   }
 
+  const inp = "w-full bg-[#1e293b] border border-[#334155] rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500/50 transition-colors"
+  const lbl = "block text-[10px] font-mono text-slate-500 mb-1 uppercase tracking-wider"
+
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-      <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl p-6 w-full max-w-md space-y-4 shadow-2xl">
+      <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl p-6 w-full max-w-lg space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-mono font-semibold text-slate-100 flex items-center gap-2">
             <Calendar size={14} className="text-cyan-400" /> {existing ? 'Engagement bearbeiten' : 'Neues Engagement'}
@@ -2613,32 +3091,33 @@ function NewEngagementModal({ clients = [], currentUser, onSave, onClose, existi
         </div>
 
         <div>
-          <label className="block text-[10px] font-mono text-slate-500 mb-1 uppercase tracking-wider">Titel</label>
-          <input value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))}
-            className="w-full bg-[#1e293b] border border-[#334155] rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500/50 transition-colors"
-            placeholder="Engagement-Titel..." />
+          <label className={lbl}>Titel *</label>
+          <input value={form.title} onChange={sf('title')} className={inp} placeholder="Engagement-Titel..." />
         </div>
 
         <div>
-          <label className="block text-[10px] font-mono text-slate-500 mb-1 uppercase tracking-wider">Client</label>
-          <select value={form.clientId} onChange={e => setForm(p => ({ ...p, clientId: e.target.value }))}
-            className="w-full bg-[#1e293b] border border-[#334155] rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500/50 transition-colors">
+          <label className={lbl}>Client</label>
+          <select value={form.clientId} onChange={sf('clientId')} className={inp}>
             {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-3 gap-3">
           <div>
-            <label className="block text-[10px] font-mono text-slate-500 mb-1 uppercase tracking-wider">Typ</label>
-            <select value={form.type} onChange={e => setForm(p => ({ ...p, type: e.target.value }))}
-              className="w-full bg-[#1e293b] border border-[#334155] rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500/50 transition-colors">
+            <label className={lbl}>Typ</label>
+            <select value={form.type} onChange={sf('type')} className={inp}>
               {['Web', 'Network', 'Social Engineering', 'Full Red Team'].map(t => <option key={t} value={t}>{t}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-[10px] font-mono text-slate-500 mb-1 uppercase tracking-wider">Status</label>
-            <select value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value }))}
-              className="w-full bg-[#1e293b] border border-[#334155] rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500/50 transition-colors">
+            <label className={lbl}>Methodik</label>
+            <select value={form.methodology || 'Black Box'} onChange={sf('methodology')} className={inp}>
+              {['Black Box', 'Grey Box', 'White Box'].map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className={lbl}>Status</label>
+            <select value={form.status} onChange={sf('status')} className={inp}>
               {['Planned', 'Active', 'On Hold'].map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
@@ -2646,19 +3125,17 @@ function NewEngagementModal({ clients = [], currentUser, onSave, onClose, existi
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-[10px] font-mono text-slate-500 mb-1 uppercase tracking-wider">Start</label>
-            <input type="date" value={form.start} onChange={e => setForm(p => ({ ...p, start: e.target.value }))}
-              className="w-full bg-[#1e293b] border border-[#334155] rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500/50 transition-colors" />
+            <label className={lbl}>Start *</label>
+            <input type="date" value={form.start} onChange={sf('start')} className={inp} />
           </div>
           <div>
-            <label className="block text-[10px] font-mono text-slate-500 mb-1 uppercase tracking-wider">Ende</label>
-            <input type="date" value={form.end} onChange={e => setForm(p => ({ ...p, end: e.target.value }))}
-              className="w-full bg-[#1e293b] border border-[#334155] rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500/50 transition-colors" />
+            <label className={lbl}>Ende *</label>
+            <input type="date" value={form.end} onChange={sf('end')} className={inp} />
           </div>
         </div>
 
         <div>
-          <label className="block text-[10px] font-mono text-slate-500 mb-2 uppercase tracking-wider">Phasen</label>
+          <label className={lbl}>Phasen</label>
           <div className="flex gap-2 flex-wrap">
             {['Recon', 'Scanning', 'Exploitation', 'Reporting'].map(phase => {
               const active = form.phases.includes(phase)
@@ -2673,11 +3150,22 @@ function NewEngagementModal({ clients = [], currentUser, onSave, onClose, existi
           </div>
         </div>
 
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className={lbl}>Lead</label>
+            <input value={form.lead} onChange={sf('lead')} className={inp} placeholder="Lead Pentester..." />
+          </div>
+          <div>
+            <label className={lbl}>Ansprechpartner (Kunde)</label>
+            <input value={form.contact || ''} onChange={sf('contact')} className={inp} placeholder="Name, E-Mail..." />
+          </div>
+        </div>
+
         <div>
-          <label className="block text-[10px] font-mono text-slate-500 mb-1 uppercase tracking-wider">Lead</label>
-          <input value={form.lead} onChange={e => setForm(p => ({ ...p, lead: e.target.value }))}
-            className="w-full bg-[#1e293b] border border-[#334155] rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500/50 transition-colors"
-            placeholder="Lead Pentester..." />
+          <label className={lbl}>Scope</label>
+          <textarea value={form.scope || ''} onChange={sf('scope')} rows={3}
+            className={inp + " resize-none"}
+            placeholder="IP-Ranges, Domains, ausgeschlossene Systeme..." />
         </div>
 
         <div className="flex gap-2 pt-1">
@@ -2687,7 +3175,7 @@ function NewEngagementModal({ clients = [], currentUser, onSave, onClose, existi
           </button>
           <button onClick={handleSubmit} disabled={!canSubmit}
             className="flex-1 py-2 rounded-lg border border-cyan-500/50 bg-cyan-500/10 text-xs font-mono text-cyan-400 hover:bg-cyan-500/20 transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
-            Erstellen
+            {existing ? 'Speichern' : 'Erstellen'}
           </button>
         </div>
       </div>
@@ -2791,7 +3279,7 @@ function PhaseDetailModal({ engagement, phase, onSave, onClose, canEdit }) {
   )
 }
 
-function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, currentUser, groups = [], engagements: allEngProp = [], onAddEngagement, onStatusChange, onEdit, onDelete, clients: allClientsProp = [], defaultStatus = 'All', defaultClientId = null, tipsLang = 'de', uiLang = 'en', pendingReports = {}, onEngDetail }) {
+function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, currentUser, groups = [], engagements: allEngProp = [], onAddEngagement, onStatusChange, onEdit, onDelete, clients: allClientsProp = [], defaultStatus = 'All', defaultClientId = null, tipsLang = 'de', uiLang = 'en', pendingReports = {}, onEngDetail, darkMode = true }) {
   const ENG_STATUS_CYCLE = { Planned: 'Active', Active: 'On Hold', 'On Hold': 'Completed', Completed: 'Planned' }
   const canCycleStatus = currentUser?.role === 'Admin' || currentUser?.role === 'Senior Pentester'
   const isAdmin = currentUser?.role === 'Admin'
@@ -2906,7 +3394,7 @@ function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, curre
               const team = assignments[eng.id] || []
               const canAccess = isAdmin || team.includes(currentUser?.id)
               return (
-                <div key={eng.id} className="border border-[#1e293b] rounded-lg p-4 hover:border-[#334155] transition-colors">
+                <div key={eng.id} onClick={() => canAccess && onEngDetail?.(eng.id)} className={`border border-[#1e293b] rounded-lg p-4 hover:border-[#334155] transition-colors ${canAccess ? 'cursor-pointer' : ''}`}>
 
                   {/* Zeile 1: Titel + Status */}
                   <div className="flex items-start justify-between gap-3 mb-2">
@@ -2946,9 +3434,9 @@ function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, curre
                           className={`px-2.5 py-1 rounded text-[9px] font-mono border transition-all ${
                             active
                               ? clickable
-                                ? `${PHASE_COLORS[phase].border} ${PHASE_COLORS[phase].text} bg-slate-800/60 hover:bg-slate-700/60 cursor-pointer`
-                                : `${PHASE_COLORS[phase].border} ${PHASE_COLORS[phase].text} bg-slate-800/40 cursor-default`
-                              : 'border-transparent text-slate-700 cursor-default'
+                                ? `${darkMode ? PHASE_COLORS[phase].border : PHASE_COLORS[phase].lightBorder} ${darkMode ? PHASE_COLORS[phase].text : PHASE_COLORS[phase].lightText} ${darkMode ? 'bg-slate-800/60 hover:bg-slate-700/60' : 'bg-white hover:bg-gray-50'} cursor-pointer`
+                                : `${darkMode ? PHASE_COLORS[phase].border : PHASE_COLORS[phase].lightBorder} ${darkMode ? PHASE_COLORS[phase].text : PHASE_COLORS[phase].lightText} ${darkMode ? 'bg-slate-800/40' : 'bg-white/60'} cursor-default`
+                              : `border-transparent ${darkMode ? 'text-slate-700' : 'text-slate-400'} cursor-default`
                           }`}
                           title={clickable ? `${phase} — ${taskDone}/${taskTotal} erledigt` : undefined}
                         >
@@ -3079,9 +3567,9 @@ function EngagementPlanner({ teamMembers = [], assignments = {}, onAssign, curre
                               className={`px-1.5 py-0.5 rounded text-[9px] font-mono border transition-all ${
                                 active
                                   ? clickable
-                                    ? `${PHASE_COLORS[phase].border} ${PHASE_COLORS[phase].text} bg-slate-800/60 hover:bg-slate-700/60 cursor-pointer`
-                                    : `${PHASE_COLORS[phase].border} ${PHASE_COLORS[phase].text} bg-slate-800/40 cursor-default`
-                                  : 'border-transparent text-slate-700 cursor-default'
+                                    ? `${darkMode ? PHASE_COLORS[phase].border : PHASE_COLORS[phase].lightBorder} ${darkMode ? PHASE_COLORS[phase].text : PHASE_COLORS[phase].lightText} ${darkMode ? 'bg-slate-800/60 hover:bg-slate-700/60' : 'bg-white hover:bg-gray-50'} cursor-pointer`
+                                    : `${darkMode ? PHASE_COLORS[phase].border : PHASE_COLORS[phase].lightBorder} ${darkMode ? PHASE_COLORS[phase].text : PHASE_COLORS[phase].lightText} ${darkMode ? 'bg-slate-800/40' : 'bg-white/60'} cursor-default`
+                                  : `border-transparent ${darkMode ? 'text-slate-700' : 'text-slate-400'} cursor-default`
                               }`}
                             >
                               {phase.slice(0, 3)}{active && taskTotal > 0 ? ` ${taskDone}/${taskTotal}` : ''}
@@ -3754,7 +4242,7 @@ function UserManagementSection({ members, currentUser, onAdd, onRemove, onEdit }
               const isSelf = member.id === currentUser?.id
               const roleCls = ROLE_BADGE[member.role] || ROLE_BADGE['Pentester']
               return (
-                <tr key={member.id} className="hover:bg-slate-800/20 transition-colors">
+                <tr key={member.id} onClick={() => setEditMember(member)} className="hover:bg-slate-800/20 transition-colors cursor-pointer">
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
                       <MemberAvatar member={member} size="md" />
@@ -3780,12 +4268,12 @@ function UserManagementSection({ members, currentUser, onAdd, onRemove, onEdit }
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1 justify-end">
-                      <button onClick={() => setEditMember(member)} title="Bearbeiten"
+                      <button onClick={e => { e.stopPropagation(); setEditMember(member) }} title="Bearbeiten"
                         className="p-1.5 rounded text-slate-600 hover:text-cyan-400 hover:bg-cyan-400/10 transition-all">
                         <Edit3 size={12} />
                       </button>
                       {!isSelf && (
-                        <button onClick={() => setDeleteConfirm(member)} title="Löschen"
+                        <button onClick={e => { e.stopPropagation(); setDeleteConfirm(member) }} title="Löschen"
                           className="p-1.5 rounded text-slate-600 hover:text-red-400 hover:bg-red-400/10 transition-all">
                           <Trash2 size={12} />
                         </button>
@@ -3835,7 +4323,7 @@ function UserManagementSection({ members, currentUser, onAdd, onRemove, onEdit }
 
 // ─── TIME TRACKING SECTION ───────────────────────────────────────────────────
 
-function TimeTrackingSection({ entries, currentUser, members, uiLang = 'en' }) {
+function TimeTrackingSection({ entries, currentUser, members, uiLang = 'en', engagements = [] }) {
   const isAdmin = currentUser?.role === 'Admin'
   const [userFilter, setUserFilter] = useState('all')
   const [range, setRange] = useState('week')
@@ -3929,7 +4417,7 @@ function TimeTrackingSection({ entries, currentUser, members, uiLang = 'en' }) {
           <table className="w-full text-xs font-mono min-w-[360px]">
             <thead>
               <tr className="border-b border-[#1e293b]">
-                {[...(isAdmin ? ['Mitarbeiter'] : []), 'Datum', 'Beginn', 'Ende', 'Dauer'].map(h => (
+                {[...(isAdmin ? ['Mitarbeiter'] : []), 'Datum', 'Beginn', 'Ende', 'Dauer', 'Engagement'].map(h => (
                   <th key={h} className="px-4 py-3 text-left text-[10px] text-slate-600 uppercase tracking-wider font-normal">{h}</th>
                 ))}
               </tr>
@@ -3951,6 +4439,9 @@ function TimeTrackingSection({ entries, currentUser, members, uiLang = 'en' }) {
                   <td className="px-4 py-3">
                     <span className="text-cyan-400 font-semibold tabular-nums">{formatDuration(e.duration)}</span>
                   </td>
+                  <td className="px-4 py-3 text-slate-500 truncate max-w-32">
+                    {e.engagement_id ? (engagements.find(eng => eng.id === e.engagement_id)?.title || <span className="text-slate-700">—</span>) : <span className="text-slate-700">—</span>}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -3962,7 +4453,7 @@ function TimeTrackingSection({ entries, currentUser, members, uiLang = 'en' }) {
   )
 }
 
-function TimeTrackingPage({ timeEntries, currentUser, members, uiLang = 'en' }) {
+function TimeTrackingPage({ timeEntries, currentUser, members, uiLang = 'en', engagements = [] }) {
   const [exportRange,    setExportRange]    = useState('week')
   const [exportMemberId, setExportMemberId] = useState('all')
 
@@ -3986,7 +4477,8 @@ function TimeTrackingPage({ timeEntries, currentUser, members, uiLang = 'en' }) 
 
   return (
     <div className="p-3 lg:p-6 space-y-5">
-      <TimeTrackingSection entries={timeEntries} currentUser={currentUser} members={members} uiLang={uiLang} />
+      <TimeTrackingSection entries={timeEntries} currentUser={currentUser} members={members} uiLang={uiLang} engagements={engagements} />
+
       <Panel>
         <PanelHeader title="PDF Export" subtitle="Zeiterfassung eines Mitarbeiters oder aller Mitarbeiter ausgeben" />
         <div className="p-5 space-y-5">
@@ -4039,6 +4531,7 @@ function SettingsPage({ members, currentUser, onAdd, onRemove, onEdit, timeEntri
   const [notifications, setNotifications] = useState(true)
   const [nickname, setNickname]   = useState(currentUser?.nickname || '')
   const [nickSaved, setNickSaved] = useState(false)
+  useEffect(() => { setNickname(currentUser?.nickname || '') }, [currentUser?.nickname])
 
   const tabs = [
     { id: 'general',  label: 'Allgemein', icon: Settings },
@@ -4484,7 +4977,7 @@ function downloadReportTemplate(engagement, client) {
   doc.save(`holysec_template_${(engagement?.title || 'report').replace(/\s+/g, '_')}.pdf`)
 }
 
-function EngagementDetail({ engagementId, onBack, clients: allClients = [], teamMembers = [], assignments = {}, engagements: allEngagements = [], pendingReports = {}, onSetPendingReport, currentUser, onEdit, onDelete, uiLang = 'en' }) {
+function EngagementDetail({ engagementId, onBack, clients: allClients = [], teamMembers = [], assignments = {}, engagements: allEngagements = [], pendingReports = {}, onSetPendingReport, currentUser, onEdit, onDelete, uiLang = 'en', findings: allFindings = [], onSaveFinding, darkMode = true }) {
   const engagement = allEngagements.find(e => e.id === engagementId)
   const client = allClients.find(c => c.id === engagement?.clientId)
   const assignedMembers = (assignments[engagementId] || []).map(uid => teamMembers.find(t => t.id === uid)).filter(Boolean)
@@ -4498,6 +4991,11 @@ function EngagementDetail({ engagementId, onBack, clients: allClients = [], team
   const isAdmin = currentUser?.role === 'Admin'
   const [showEditModal, setShowEditModal] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [showNewFinding, setShowNewFinding] = useState(false)
+  const engFindings = allFindings.filter(f => f.engagementId === engagementId)
+  const [expandedPhase, setExpandedPhase] = useState(null)
+  const [phaseNotesDraft, setPhaseNotesDraft] = useState({})
+  const canEditPhase = isAdmin || (assignments[engagementId] || []).includes(currentUser?.id)
 
   const handleFile = (file) => {
     if (!file || file.type !== 'application/pdf') return
@@ -4524,6 +5022,20 @@ function EngagementDetail({ engagementId, onBack, clients: allClients = [], team
     setUploadedFile(null)
   }
 
+  const togglePhaseCheck = (phase, idx) => {
+    if (!canEditPhase || !engagement) return
+    const checks = engagement.phaseChecks?.[phase] || []
+    const next = checks.includes(idx) ? checks.filter(i => i !== idx) : [...checks, idx]
+    onEdit?.({ ...engagement, phaseChecks: { ...engagement.phaseChecks, [phase]: next } })
+  }
+
+  const savePhaseNote = (phase) => {
+    if (!engagement) return
+    const note = phaseNotesDraft[phase] ?? ''
+    onEdit?.({ ...engagement, phaseNotes: { ...engagement.phaseNotes, [phase]: note } })
+    setPhaseNotesDraft(prev => { const n = { ...prev }; delete n[phase]; return n })
+  }
+
   if (!engagement) return null
 
   const hoursUsed = client?.contract?.used || 0
@@ -4536,6 +5048,12 @@ function EngagementDetail({ engagementId, onBack, clients: allClients = [], team
         <NewEngagementModal clients={allClients} currentUser={currentUser} existing={engagement}
           onSave={eng => { onEdit?.(eng); setShowEditModal(false) }}
           onClose={() => setShowEditModal(false)} />
+      )}
+      {showNewFinding && (
+        <NewFindingModal clients={allClients} engagements={allEngagements} defaultEngagementId={engagementId}
+          currentUser={currentUser}
+          onSave={f => { onSaveFinding?.(f); setShowNewFinding(false) }}
+          onClose={() => setShowNewFinding(false)} />
       )}
       {confirmDelete && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
@@ -4607,19 +5125,91 @@ function EngagementDetail({ engagementId, onBack, clients: allClients = [], team
               </div>
               <div className="col-span-2">
                 <div className="text-[9px] font-mono text-slate-600 uppercase mb-2">Phasen</div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 mb-2">
                   {['Recon', 'Scanning', 'Exploitation', 'Reporting'].map(phase => {
                     const active = engagement.phases?.includes(phase)
                     const cfg = PHASE_COLORS[phase]
+                    const checks = engagement.phaseChecks?.[phase] || []
+                    const taskTotal = (PHASE_TASKS[phase] || []).length
+                    const taskDone = checks.length
+                    const pct = taskTotal ? Math.round((taskDone / taskTotal) * 100) : 0
+                    const isExp = expandedPhase === phase
                     return (
-                      <div key={phase} className={`flex-1 rounded-lg p-3 border text-center ${active ? `${cfg.border} bg-current/5` : 'border-[#1e293b] opacity-30'}`}>
-                        <div className={`h-1.5 rounded-full mb-2 ${active ? cfg.bg : 'bg-slate-800'}`} />
-                        <span className={`text-[10px] font-mono font-medium ${active ? cfg.text : 'text-slate-600'}`}>{phase}</span>
-                      </div>
+                      <button key={phase} disabled={!active}
+                        onClick={() => active && setExpandedPhase(isExp ? null : phase)}
+                        className={`flex-1 rounded-lg p-3 border text-center transition-all ${active ? `${darkMode ? cfg.border : cfg.lightBorder} ${isExp ? (darkMode ? 'bg-slate-800/60' : 'bg-gray-100') : (darkMode ? 'bg-slate-800/20 hover:bg-slate-800/40' : 'bg-white hover:bg-gray-50')} cursor-pointer` : `${darkMode ? 'border-[#1e293b]' : 'border-gray-200'} opacity-30 cursor-default`}`}>
+                        <div className={`h-1 rounded-full mb-2 ${darkMode ? 'bg-slate-800' : 'bg-gray-200'} overflow-hidden`}>
+                          {active && taskTotal > 0 && <div className={`h-1 ${cfg.bg} transition-all`} style={{ width: `${pct}%` }} />}
+                        </div>
+                        <span className={`text-[10px] font-mono font-medium ${active ? (darkMode ? cfg.text : cfg.lightText) : (darkMode ? 'text-slate-600' : 'text-gray-400')}`}>{phase}</span>
+                        {active && taskTotal > 0 && <div className="text-[9px] font-mono text-slate-600 mt-0.5">{taskDone}/{taskTotal}</div>}
+                      </button>
                     )
                   })}
                 </div>
+                {expandedPhase && engagement.phases?.includes(expandedPhase) && (() => {
+                  const cfg = PHASE_COLORS[expandedPhase]
+                  const tasks = PHASE_TASKS[expandedPhase] || []
+                  const checks = engagement.phaseChecks?.[expandedPhase] || []
+                  const noteDraft = phaseNotesDraft[expandedPhase] ?? engagement.phaseNotes?.[expandedPhase] ?? ''
+                  const isDirty = phaseNotesDraft[expandedPhase] !== undefined
+                  return (
+                    <div className="bg-[#080e1a] border border-[#1e293b] rounded-xl p-4 space-y-3">
+                      <div className="flex items-center justify-between text-[10px] font-mono">
+                        <span className={`font-semibold ${cfg.text}`}>{expandedPhase}</span>
+                        <span className="text-slate-500">{checks.length}/{tasks.length} · {tasks.length ? Math.round(checks.length / tasks.length * 100) : 0}%</span>
+                      </div>
+                      <div className="h-1 rounded-full bg-slate-800 overflow-hidden">
+                        <div className={`h-1 ${cfg.bg} transition-all`} style={{ width: `${tasks.length ? Math.round(checks.length / tasks.length * 100) : 0}%` }} />
+                      </div>
+                      <div className="space-y-1">
+                        {tasks.map((task, idx) => (
+                          <button key={idx} onClick={() => togglePhaseCheck(expandedPhase, idx)} disabled={!canEditPhase}
+                            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg border text-left transition-all ${checks.includes(idx) ? `${cfg.border} bg-slate-800/60` : 'border-transparent hover:border-[#1e293b] hover:bg-slate-800/30'} ${canEditPhase ? 'cursor-pointer' : 'cursor-default'}`}>
+                            <div className={`shrink-0 w-4 h-4 rounded border flex items-center justify-center transition-all ${checks.includes(idx) ? `${cfg.bg} border-transparent` : 'border-slate-600'}`}>
+                              {checks.includes(idx) && <svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                            </div>
+                            <span className={`text-xs font-mono ${checks.includes(idx) ? 'text-slate-500 line-through' : 'text-slate-300'}`}>{task}</span>
+                          </button>
+                        ))}
+                      </div>
+                      <div className="space-y-1.5">
+                        <p className="text-[9px] font-mono text-slate-600 uppercase tracking-widest">Notizen</p>
+                        <textarea value={noteDraft}
+                          onChange={e => setPhaseNotesDraft(prev => ({ ...prev, [expandedPhase]: e.target.value }))}
+                          readOnly={!canEditPhase}
+                          placeholder={canEditPhase ? 'Tools, Ergebnisse, Besonderheiten...' : 'Keine Notizen.'}
+                          rows={3}
+                          className="w-full bg-[#0a0a0a] border border-[#1e293b] rounded-lg p-3 text-xs font-mono text-slate-300 placeholder-slate-700 resize-none focus:outline-none focus:border-cyan-500/40 transition-colors" />
+                        {canEditPhase && isDirty && (
+                          <button onClick={() => savePhaseNote(expandedPhase)}
+                            className="text-[10px] font-mono px-3 py-1 rounded border border-cyan-500/40 bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20 transition-all">
+                            Notiz speichern
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })()}
               </div>
+              {engagement.methodology && (
+                <div>
+                  <div className="text-[9px] font-mono text-slate-600 uppercase mb-1">Methodik</div>
+                  <div className="text-sm font-mono text-slate-200">{engagement.methodology}</div>
+                </div>
+              )}
+              {engagement.contact && (
+                <div>
+                  <div className="text-[9px] font-mono text-slate-600 uppercase mb-1">Ansprechpartner</div>
+                  <div className="text-xs font-mono text-slate-200 whitespace-pre-line">{engagement.contact}</div>
+                </div>
+              )}
+              {engagement.scope && (
+                <div className="col-span-2">
+                  <div className="text-[9px] font-mono text-slate-600 uppercase mb-1">Scope</div>
+                  <div className="text-xs font-mono text-slate-300 whitespace-pre-wrap bg-[#0a0a0a] rounded-lg p-3 border border-[#1e293b]">{engagement.scope}</div>
+                </div>
+              )}
             </div>
           </Panel>
 
@@ -4641,6 +5231,33 @@ function EngagementDetail({ engagementId, onBack, clients: allClients = [], team
                 </div>
               ) : (
                 <p className="text-xs font-mono text-slate-600 py-2">Noch kein Team zugewiesen.</p>
+              )}
+            </div>
+          </Panel>
+
+          {/* Findings */}
+          <Panel>
+            <PanelHeader title="Findings" subtitle={`${engFindings.length} erfasst`}>
+              {(currentUser?.role === 'Admin' || currentUser?.role === 'Senior Pentester' || currentUser?.role === 'Pentester') && (
+                <button onClick={() => setShowNewFinding(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 border border-red-400/50 bg-red-500/10 rounded text-[10px] font-mono text-red-400 hover:bg-red-500/20 transition-all">
+                  <Plus size={11} /> New Finding
+                </button>
+              )}
+            </PanelHeader>
+            <div className="divide-y divide-[#1e293b]">
+              {engFindings.length > 0 ? engFindings.map(f => (
+                <div key={f.id} className="px-4 py-3 flex items-center gap-3">
+                  <SeverityBadge severity={f.severity} />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-mono text-slate-200 truncate">{f.title}</div>
+                    <div className="text-[10px] font-mono text-slate-600">{f.category} · {f.date}</div>
+                  </div>
+                  <div className="w-32 shrink-0 hidden sm:block"><CvssBar score={f.cvss} /></div>
+                  <StatusBadge status={f.status} />
+                </div>
+              )) : (
+                <div className="px-4 py-4 text-xs font-mono text-slate-600">Noch keine Findings für dieses Engagement.</div>
               )}
             </div>
           </Panel>
@@ -5340,7 +5957,8 @@ function ClientMapPage({ clients = [], darkMode = true, onClientClick }) {
     // ── Cluster-Group ────────────────────────────────────────
     const clusterGroup = L.markerClusterGroup({
       maxClusterRadius: 48,
-      spiderfyOnMaxZoom: false,
+      spiderfyOnMaxZoom: true,
+      disableClusteringAtZoom: 13,
       showCoverageOnHover: false,
       zoomToBoundsOnClick: true,
       iconCreateFunction: (cluster) => {
@@ -5384,25 +6002,29 @@ function ClientMapPage({ clients = [], darkMode = true, onClientClick }) {
     })
 
     const makeMarkerIcon = (col, count = 1) => {
-      const sz   = 34
+      const sz   = 36
       const half = sz / 2
-      const glowPx = col.fill === CRITICALITY_COLOR.CRITICAL?.fill ? 14 : 8
+      const glowPx = col.fill === CRITICALITY_COLOR.CRITICAL?.fill ? 16 : 10
       if (count === 1) {
-        const dotSz = Math.round(sz * 0.35)
+        const dotSz = Math.round(sz * 0.33)
         return L.divIcon({
-          html: `<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:${col.fill}1a;border:2px solid ${col.fill};box-shadow:0 0 ${glowPx}px ${col.fill}66,0 2px 8px rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;cursor:pointer">
-            <div style="width:${dotSz}px;height:${dotSz}px;border-radius:50%;background:${col.fill};box-shadow:0 0 6px ${col.fill}99"></div>
+          html: `<div style="position:relative;width:${sz}px;height:${sz}px;display:flex;align-items:center;justify-content:center">
+            <div class="hs-marker-pulse" style="color:${col.fill};inset:-2px"></div>
+            <div style="width:${sz}px;height:${sz}px;border-radius:50%;background:${col.fill}18;border:2.5px solid ${col.fill};box-shadow:0 0 ${glowPx}px ${col.fill}77,0 3px 12px rgba(0,0,0,0.55);display:flex;align-items:center;justify-content:center;cursor:pointer;backdrop-filter:blur(2px)">
+              <div style="width:${dotSz}px;height:${dotSz}px;border-radius:50%;background:${col.fill};box-shadow:0 0 8px ${col.fill}cc"></div>
+            </div>
           </div>`,
-          className: '', iconSize: [sz, sz], iconAnchor: [half, half], popupAnchor: [0, -half - 6],
+          className: '', iconSize: [sz, sz], iconAnchor: [half, half], popupAnchor: [0, -half - 8],
         })
       }
-      // Gruppen-Icon: gestapelte Ringe + Zahl
       return L.divIcon({
-        html: `<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:#0f172a;border:2px solid #06b6d4;box-shadow:0 0 12px #06b6d455,0 2px 8px rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative">
-          <div style="position:absolute;inset:-4px;border-radius:50%;border:1px solid #06b6d430;pointer-events:none"></div>
-          <span style="font-size:11px;font-weight:700;font-family:monospace;color:#06b6d4">${count}</span>
+        html: `<div style="position:relative;width:${sz}px;height:${sz}px;display:flex;align-items:center;justify-content:center">
+          <div class="hs-marker-pulse" style="color:#06b6d4;inset:-2px"></div>
+          <div style="width:${sz}px;height:${sz}px;border-radius:50%;background:#06b6d415;border:2.5px solid #06b6d4;box-shadow:0 0 14px #06b6d466,0 3px 12px rgba(0,0,0,0.55);display:flex;align-items:center;justify-content:center;cursor:pointer">
+            <span style="font-size:12px;font-weight:700;font-family:monospace;color:#06b6d4">${count}</span>
+          </div>
         </div>`,
-        className: '', iconSize: [sz, sz], iconAnchor: [half, half], popupAnchor: [0, -half - 6],
+        className: '', iconSize: [sz, sz], iconAnchor: [half, half], popupAnchor: [0, -half - 8],
       })
     }
 
@@ -5465,7 +6087,11 @@ function ClientMapPage({ clients = [], darkMode = true, onClientClick }) {
 
     map.addLayer(clusterGroup)
 
-    map.on('click', () => map.closePopup())
+    map.on('click', (e) => {
+      if (!e.originalEvent.target.closest('.leaflet-marker-icon, .leaflet-popup')) {
+        map.closePopup()
+      }
+    })
 
     map.on('popupopen', (e) => {
       e.popup.getElement()?.querySelectorAll('.map-detail-btn').forEach(btn => {
@@ -5474,30 +6100,12 @@ function ClientMapPage({ clients = [], darkMode = true, onClientClick }) {
           if (id && onClientClickRef.current) onClientClickRef.current(id)
         }
       })
-      const isSpider = e.popup._source?._isSpider === true
-      if (flybackTimerRef.current !== null) {
-        clearTimeout(flybackTimerRef.current)
-        flybackTimerRef.current = null
-      } else if (!isSpider) {
-        savedViewRef.current = { center: map.getCenter(), zoom: map.getZoom() }
-      }
-      if (!isSpider) {
-        const latlng = e.popup.getLatLng()
-        if (latlng) {
-          const targetZoom = Math.min(map.getZoom() + 1, 12)
-          map.flyTo(latlng, targetZoom, { duration: 0.5 })
-        }
-      }
     })
 
     map.on('popupclose', () => {
-      if (!savedViewRef.current) return
-      const saved = { ...savedViewRef.current }
-      flybackTimerRef.current = setTimeout(() => {
-        flybackTimerRef.current = null
-        savedViewRef.current    = null
-        if (mapRef.current) mapRef.current.flyTo(saved.center, saved.zoom, { duration: 0.6 })
-      }, 80)
+      if (map.getZoom() >= 13) {
+        map.flyTo(map.getCenter(), 11, { duration: 0.5 })
+      }
     })
 
 
@@ -5514,7 +6122,6 @@ function ClientMapPage({ clients = [], darkMode = true, onClientClick }) {
     zoomBoxWatcher.observe(mapDivRef.current, { childList: true, subtree: true })
 
     return () => {
-      if (flybackTimerRef.current) { clearTimeout(flybackTimerRef.current); flybackTimerRef.current = null }
       if (spiderRef.current) { spiderRef.current.forEach(l => { try { map.removeLayer(l) } catch {} }); spiderRef.current = null }
       zoomBoxWatcher.disconnect()
       if (mapRef.current) { mapRef.current.remove(); mapRef.current = null }
@@ -5523,7 +6130,7 @@ function ClientMapPage({ clients = [], darkMode = true, onClientClick }) {
 
   const chipBase   = darkMode
     ? 'border-[#1e293b] text-slate-600 hover:text-slate-300 hover:border-slate-600'
-    : 'border-gray-200 text-gray-400 hover:text-gray-700 hover:border-gray-400'
+    : 'border-gray-300 text-gray-600 hover:text-gray-900 hover:border-gray-500'
   const chipActive = darkMode
     ? 'border-slate-500/50 bg-slate-700/40 text-slate-300'
     : 'border-slate-400/60 bg-slate-100 text-slate-700'
@@ -5942,6 +6549,11 @@ export default function App() {
   const [uiLang, setUiLang]   = useState(() => localStorage.getItem('holysec_ui_lang')   || 'en')
   const [tipsLang, setTipsLang] = useState(() => localStorage.getItem('holysec_tips_lang') || 'de')
   const [pendingReports, setPendingReports]   = useState({})
+
+  // Aliase müssen vor allen useCallbacks stehen, die sie als Dependency nutzen
+  const allEngagements = customEngagements
+  const allFindings = customFindings
+
   const sessionIpRef = useRef('–')
   const currentUserRef = useRef(null)
   const apiLoadedRef = useRef(false)
@@ -6223,6 +6835,10 @@ export default function App() {
     const eng = customEngagements.find(e => e.id === id)
     if (!eng) return
     const next = cycle[eng.status] || eng.status
+    if (next === 'Completed') {
+      const openCount = customFindings.filter(f => f.engagementId === id && f.status !== 'Closed').length
+      if (openCount > 0 && !window.confirm(`Achtung: ${openCount} Finding(s) für dieses Engagement sind noch nicht geschlossen. Trotzdem abschließen?`)) return
+    }
     logEvent('ENGAGEMENT_STATUS', `"${eng.title}" → ${next}`, 'engagements')
     const saved = await apiUpdateEngagement(id, { ...eng, status: next })
     if (saved) setCustomEngagements(prev => prev.map(e => e.id === id ? saved : e))
@@ -6266,11 +6882,12 @@ export default function App() {
     logEvent('CLIENT_GELÖSCHT', `ID: ${id}`, 'clients')
   }, [logEvent])
 
-  const handleClockIn = useCallback(() => {
+  const handleClockIn = useCallback((engagementId, clientId) => {
     if (!currentUser || activeTimer) return
-    setActiveTimer({ userId: currentUser.id, userName: currentUser.name, start: Date.now() })
-    logEvent('ZEITERFASSUNG_START', `Timer gestartet`, 'time')
-  }, [currentUser, activeTimer, logEvent])
+    setActiveTimer({ userId: currentUser.id, userName: currentUser.name, start: Date.now(), engagementId: engagementId || null, clientId: clientId || null })
+    const eng = allEngagements.find(e => e.id === engagementId)
+    logEvent('ZEITERFASSUNG_START', `Timer gestartet${eng ? ` — ${eng.title}` : ''}`, 'time')
+  }, [currentUser, activeTimer, allEngagements, logEvent])
 
   const handleClockOut = useCallback(async () => {
     if (!activeTimer) return
@@ -6285,6 +6902,8 @@ export default function App() {
       start: new Date(activeTimer.start).toTimeString().slice(0, 5),
       end: now.toTimeString().slice(0, 5),
       duration,
+      engagementId: activeTimer.engagementId || null,
+      clientId: activeTimer.clientId || null,
     }
     const saved = await apiCreateTimeEntry(entry)
     if (saved) setTimeEntries(prev => [...prev, saved])
@@ -6301,9 +6920,6 @@ export default function App() {
   const handleBackToClients = useCallback(() => { setSelectedClientId(null); setPage('client-manager') }, [])
   const handleEngDetailClick = useCallback((id) => { setSelectedEngId(id); setPage('eng-detail') }, [])
   const handleBackToEngagements = useCallback(() => { setSelectedEngId(null); setPage('engagements') }, [])
-
-  const allEngagements = customEngagements
-  const allFindings = customFindings
 
   if (!currentUser) return <LoginPage onLogin={handleLogin} darkMode={darkMode} onToggleDark={() => setDarkMode(v => !v)} />
 
@@ -6344,8 +6960,8 @@ export default function App() {
           </div>
           {page === 'client-detail'    && selectedClientId && <ClientDetail clientId={selectedClientId} onBack={handleBackToClients} clients={clients} findings={allFindings} engagements={allEngagements} reports={reports} tipsLang={tipsLang} uiLang={uiLang} onNav={handleNav} darkMode={darkMode} />}
           {page === 'findings'         && <FindingsTracker currentUser={currentUser} assignments={assignments} findings={allFindings} onAddFinding={handleAddFinding} onEditFinding={handleEditFinding} onDeleteFinding={handleDeleteFinding} clients={clients} teamMembers={teamMembers} engagements={allEngagements} onSendReminder={handleSendReminder} defaultSeverity={pageOpts.severity} defaultStatus={pageOpts.status} defaultClientId={pageOpts.clientId || 'All'} defaultFindingId={pageOpts.findingId || null} tipsLang={tipsLang} />}
-          {page === 'engagements'      && <EngagementPlanner teamMembers={teamMembers} assignments={assignments} onAssign={handleAssign} currentUser={currentUser} groups={engagementGroups} engagements={allEngagements} onAddEngagement={handleAddEngagement} onStatusChange={handleEngStatusChange} onEdit={handleEditEngagement} onDelete={handleDeleteEngagement} clients={clients} defaultStatus={pageOpts.status} defaultClientId={pageOpts.clientId || null} tipsLang={tipsLang} uiLang={uiLang} pendingReports={pendingReports} onEngDetail={handleEngDetailClick} />}
-          {page === 'eng-detail'       && selectedEngId && <EngagementDetail engagementId={selectedEngId} onBack={handleBackToEngagements} clients={clients} teamMembers={teamMembers} assignments={assignments} engagements={allEngagements} pendingReports={pendingReports} onSetPendingReport={handleSetPendingReport} currentUser={currentUser} onEdit={handleEditEngagement} onDelete={handleDeleteEngagement} uiLang={uiLang} />}
+          {page === 'engagements'      && <EngagementPlanner teamMembers={teamMembers} assignments={assignments} onAssign={handleAssign} currentUser={currentUser} groups={engagementGroups} engagements={allEngagements} onAddEngagement={handleAddEngagement} onStatusChange={handleEngStatusChange} onEdit={handleEditEngagement} onDelete={handleDeleteEngagement} clients={clients} defaultStatus={pageOpts.status} defaultClientId={pageOpts.clientId || null} tipsLang={tipsLang} uiLang={uiLang} pendingReports={pendingReports} onEngDetail={handleEngDetailClick} darkMode={darkMode} />}
+          {page === 'eng-detail'       && selectedEngId && <EngagementDetail engagementId={selectedEngId} onBack={handleBackToEngagements} clients={clients} teamMembers={teamMembers} assignments={assignments} engagements={allEngagements} pendingReports={pendingReports} onSetPendingReport={handleSetPendingReport} currentUser={currentUser} onEdit={handleEditEngagement} onDelete={handleDeleteEngagement} uiLang={uiLang} findings={allFindings} onSaveFinding={handleAddFinding} darkMode={darkMode} />}
           {page === 'eng-groups'       && <EngagementGroupsPage groups={engagementGroups} engagements={allEngagements} onAdd={handleAddGroup} onEdit={handleEditGroup} onDelete={handleDeleteGroup} teamMembers={teamMembers} currentUser={currentUser} />}
           {page === 'reports'          && <ReportingCenter reports={reports} onStatusChange={handleReportStatusChange} onAdd={handleAddReport} currentUser={currentUser} assignments={assignments} onAuditLog={handleAuditLogDownload} tipsLang={tipsLang} clients={clients} engagements={allEngagements} findings={allFindings} />}
           {page === 'team'             && <TeamPage members={teamMembers} currentUser={currentUser} onAdd={handleAddMember} onRemove={handleRemoveMember} assignments={assignments} engagements={allEngagements} userPresence={userPresence} timeEntries={timeEntries} onAuditLog={handleAuditLogDownload} uiLang={uiLang} />}
@@ -6354,7 +6970,7 @@ export default function App() {
               <UserManagementSection members={teamMembers} currentUser={currentUser} onAdd={handleAddMember} onRemove={handleRemoveMember} onEdit={handleEditMember} />
             </div>
           )}
-          {page === 'time-tracking'    && currentUser?.role === 'Admin' && <TimeTrackingPage timeEntries={timeEntries} currentUser={currentUser} members={teamMembers} uiLang={uiLang} />}
+          {page === 'time-tracking'    && currentUser?.role === 'Admin' && <TimeTrackingPage timeEntries={timeEntries} currentUser={currentUser} members={teamMembers} uiLang={uiLang} engagements={allEngagements} />}
           {page === 'audit'            && <AuditLogPage logs={auditLogs} teamMembers={teamMembers} onClear={handleClearAuditLogs} tipsLang={tipsLang} />}
           {page === 'about'            && <AboutHolySec />}
           {page === 'settings'         && <SettingsPage members={teamMembers} currentUser={currentUser} onAdd={handleAddMember} onRemove={handleRemoveMember} onEdit={handleEditMember} timeEntries={timeEntries} darkMode={darkMode} onToggleDark={() => setDarkMode(v => !v)} uiLang={uiLang} onUiLangChange={setUiLang} tipsLang={tipsLang} onTipsLangChange={setTipsLang} />}
